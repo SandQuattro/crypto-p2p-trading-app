@@ -1,0 +1,116 @@
+.App {
+  text-align: center;
+  background-color: #1E222D;
+  color: white;
+  min-height: 100vh;
+  padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+.App-header {
+  margin-bottom: 20px;
+}
+
+.trading-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.chart-container {
+  margin-top: 20px;
+  height: 500px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.trading-pairs {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.pair-button {
+  background-color: #2B2B43;
+  color: #DDD;
+  border: none;
+  padding: 10px 15px;
+  margin: 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.pair-button:hover {
+  background-color: #3a3a57;
+}
+
+.pair-button.active {
+  background-color: #4285F4;
+  color: white;
+}
+
+.price-display {
+  margin: 20px 0;
+  padding: 15px;
+  background-color: #2B2B43;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.price-display h2 {
+  margin: 0 0 10px 0;
+  font-size: 24px;
+}
+
+.price-display .positive {
+  color: #26a69a;
+}
+
+.price-display .negative {
+  color: #ef5350;
+}
+
+.chart {
+  height: 100%;
+  width: 100%;
+}
+
+.price-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.price {
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.price-change {
+  font-size: 1rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.orders-per-second {
+  font-size: 0.9rem;
+  background-color: #3a3a57;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.orders-per-second::before {
+  content: "⚡";
+  margin-right: 5px;
+  font-size: 0.8rem;
+}

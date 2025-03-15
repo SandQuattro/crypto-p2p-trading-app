@@ -1,0 +1,22 @@
+[app]
+name = "template"
+environment = "prod"
+debug = false
+
+[http]
+port = "8000"
+
+[tracing]
+url = "jaeger-collector.tracing:4317"
+
+[db]
+host = "postgres"
+port = 5432
+user = "user"
+name = "demo"
+pool_max = 2
+connect_timeout = 1
+health_check_period = 1
+
+[logger]
+level = "DEBUG"
