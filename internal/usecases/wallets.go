@@ -3,9 +3,9 @@ package usecases
 import (
 	"context"
 	"fmt"
+	"golang.org/x/exp/maps"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -66,6 +66,8 @@ func (ws *WalletService) loadWalletsFromDB(ctx context.Context) error {
 	ws.walletsMu.Lock()
 	defer ws.walletsMu.Unlock()
 
+	// Clear the existing map and repopulate it
+	maps.Clear(ws.wallets)
 	for _, wallet := range wallets {
 		ws.wallets[wallet.Address] = true
 	}
@@ -101,16 +103,28 @@ func (ws *WalletService) IsOurWallet(ctx context.Context, address string) (bool,
 	return tracked, nil
 }
 
-func (ws *WalletService) GenerateWallet(ctx context.Context) (string, error) {
+// GenerateWalletForUser generates a new wallet address for a specific user
+func (ws *WalletService) GenerateWalletForUser(ctx context.Context, userID string) (string, error) {
+	if userID == "" {
+		userID = "default" // Use a default user ID if none is provided
+	}
+
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
-	// Use a counter or random number for the index
-	// This is a simplified example - you might want to store the last used index
-	index := uint32(time.Now().UnixNano() % 0x80000000)
-	derivationPath := fmt.Sprintf("m/44'/60'/0'/0/%d", index)
+	// Get the last used index from the database for this user
+	lastIndex, err := ws.repo.GetLastWalletIndexForUser(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get last wallet index for user %s: %w", userID, err)
+	}
 
-	childKey, err := ws.masterKey.NewChildKey(index)
+	// Increment the index for the new wallet
+	newIndex := lastIndex + 1
+
+	// Create derivation path using the new index
+	derivationPath := fmt.Sprintf("m/44'/60'/0'/0/%d", newIndex)
+
+	childKey, err := ws.masterKey.NewChildKey(newIndex)
 	if err != nil {
 		return "", fmt.Errorf("failed to create child key: %w", err)
 	}
@@ -122,8 +136,8 @@ func (ws *WalletService) GenerateWallet(ctx context.Context) (string, error) {
 
 	address := crypto.PubkeyToAddress(privKey.PublicKey).Hex()
 
-	// Track this wallet in database
-	if err = ws.repo.TrackWallet(ctx, address, derivationPath); err != nil {
+	// Track this wallet in database with the user ID and index
+	if err = ws.repo.TrackWalletWithUserAndIndex(ctx, address, derivationPath, userID, newIndex); err != nil {
 		return "", fmt.Errorf("failed to track wallet: %w", err)
 	}
 
@@ -132,11 +146,69 @@ func (ws *WalletService) GenerateWallet(ctx context.Context) (string, error) {
 	ws.wallets[address] = true
 	ws.walletsMu.Unlock()
 
-	ws.logger.Info("Generated new wallet", "address", address, "path", derivationPath)
+	ws.logger.Info("Generated new wallet", "address", address, "path", derivationPath, "user", userID, "index", newIndex)
 	return address, nil
 }
 
-// GetAllTrackedWallets retrieves all tracked wallet addresses
+// GenerateWallet generates a new wallet address for the default user
+func (ws *WalletService) GenerateWallet(ctx context.Context) (string, error) {
+	return ws.GenerateWalletForUser(ctx, "default")
+}
+
+// TrackWalletForUser adds a wallet address to the tracking system for a specific user
+func (ws *WalletService) TrackWalletForUser(ctx context.Context, address string, derivationPath string, userID string) error {
+	if userID == "" {
+		userID = "default" // Use a default user ID if none is provided
+	}
+
+	// Get the last used index from the database for this user
+	lastIndex, err := ws.repo.GetLastWalletIndexForUser(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get last wallet index for user %s: %w", userID, err)
+	}
+
+	// Increment the index for the new wallet
+	newIndex := lastIndex + 1
+
+	// Track this wallet in database with the user ID and index
+	if err := ws.repo.TrackWalletWithUserAndIndex(ctx, address, derivationPath, userID, newIndex); err != nil {
+		return fmt.Errorf("failed to track wallet: %w", err)
+	}
+
+	// Update in-memory cache
+	ws.walletsMu.Lock()
+	ws.wallets[address] = true
+	ws.walletsMu.Unlock()
+
+	ws.logger.Info("Wallet added to tracking", "address", address, "path", derivationPath, "user", userID, "index", newIndex)
+	return nil
+}
+
+// TrackWallet adds a wallet address to the tracking system for the default user
+func (ws *WalletService) TrackWallet(ctx context.Context, address string, derivationPath string) error {
+	return ws.TrackWalletForUser(ctx, address, derivationPath, "default")
+}
+
+// GetAllTrackedWalletsForUser retrieves all tracked wallet addresses for a specific user
+func (ws *WalletService) GetAllTrackedWalletsForUser(ctx context.Context, userID string) ([]string, error) {
+	if userID == "" {
+		userID = "default" // Use a default user ID if none is provided
+	}
+
+	wallets, err := ws.repo.GetAllTrackedWalletsForUser(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tracked wallets for user %s: %w", userID, err)
+	}
+
+	addresses := make([]string, len(wallets))
+	for i, wallet := range wallets {
+		addresses[i] = wallet.Address
+	}
+
+	return addresses, nil
+}
+
+// GetAllTrackedWallets retrieves all tracked wallet addresses across all users
 func (ws *WalletService) GetAllTrackedWallets(ctx context.Context) ([]string, error) {
 	wallets, err := ws.repo.GetAllTrackedWallets(ctx)
 	if err != nil {
@@ -149,20 +221,4 @@ func (ws *WalletService) GetAllTrackedWallets(ctx context.Context) ([]string, er
 	}
 
 	return addresses, nil
-}
-
-// TrackWallet adds a wallet address to the tracking system
-func (ws *WalletService) TrackWallet(ctx context.Context, address string, derivationPath string) error {
-	// Track this wallet in database
-	if err := ws.repo.TrackWallet(ctx, address, derivationPath); err != nil {
-		return fmt.Errorf("failed to track wallet: %w", err)
-	}
-
-	// Update in-memory cache
-	ws.walletsMu.Lock()
-	ws.wallets[address] = true
-	ws.walletsMu.Unlock()
-
-	ws.logger.Info("Wallet added to tracking", "address", address, "path", derivationPath)
-	return nil
 }
