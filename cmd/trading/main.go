@@ -132,7 +132,7 @@ func main() {
 
 	// Start blockchain subscription in a goroutine
 	go func() {
-		walletService.SubscribeToTransactions(ctx, transactionService, config.RPCURL)
+		walletService.SubscribeToTransactions(ctx, config.RPCURL)
 	}()
 
 	// Set up graceful shutdown
