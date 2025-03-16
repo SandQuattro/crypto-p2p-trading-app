@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/workers"
 	"log/slog"
 	"math/big"
 	"sync"
@@ -22,6 +23,16 @@ import (
 	"github.com/tyler-smith/go-bip39"
 )
 
+type WalletsRepository interface {
+	FindWalletByAddress(ctx context.Context, address string) (*entities.Wallet, error)
+	FindWalletByID(ctx context.Context, id int) (*entities.Wallet, error)
+	IsWalletTracked(ctx context.Context, address string) (bool, error)
+	GetAllTrackedWallets(ctx context.Context) ([]entities.Wallet, error)
+	GetLastWalletIndexForUser(ctx context.Context, userID int64) (uint32, error)
+	TrackWalletWithUserAndIndex(ctx context.Context, address string, derivationPath string, userID int64, index uint32) (int, error)
+	GetAllTrackedWalletsForUser(ctx context.Context, userID int64) ([]entities.Wallet, error)
+}
+
 type WalletService struct {
 	logger *slog.Logger
 
@@ -29,9 +40,9 @@ type WalletService struct {
 	wallets   map[string]bool // In-memory cache of tracked wallets
 	walletsMu sync.RWMutex    // Mutex for wallets map
 
-	repo *repository.WalletsRepository
+	repo WalletsRepository
 
-	transactions *TransactionService
+	transactions *TransactionServiceImpl
 
 	mu sync.Mutex
 }
@@ -39,7 +50,7 @@ type WalletService struct {
 func NewWalletService(
 	logger *slog.Logger,
 	seed string,
-	transactions *TransactionService,
+	transactions *TransactionServiceImpl,
 	walletsRepo *repository.WalletsRepository,
 ) (*WalletService, error) {
 	seedBytes := bip39.NewSeed(seed, "")
@@ -262,7 +273,7 @@ func (bsc *WalletService) TransferFunds(ctx context.Context, fromWalletID int, t
 
 	// Create token transfer data
 	// USDT contract address on BSC
-	tokenAddress := common.HexToAddress(USDTContractAddress)
+	tokenAddress := common.HexToAddress(workers.USDTContractAddress)
 
 	// Create the transaction data for ERC20 transfer
 	transferFnSignature := []byte("transfer(address,uint256)")

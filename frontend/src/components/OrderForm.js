@@ -5,35 +5,36 @@ import '../App.css';
 const OrderForm = ({ onOrderCreated }) => {
     const [userId, setUserId] = useState('1');
     const [amount, setAmount] = useState('');
-    const [loading, setLoading] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setLoading(true);
         setError('');
-        setSuccess('');
+        setSuccessMessage('');
+        setIsSubmitting(true);
 
         try {
             const response = await createOrder(userId, amount);
-            setSuccess(`Order created successfully! Wallet: ${response.wallet}`);
+            setSuccessMessage(`Order created successfully! Wallet: ${response.wallet}`);
             setAmount('');
+
+            // Notify parent component that order was created
             if (onOrderCreated) {
                 onOrderCreated();
             }
         } catch (error) {
             setError('Failed to create order. Please try again.');
-            console.error('Order creation error:', error);
+            console.error('Error creating order:', error);
         } finally {
-            setLoading(false);
+            setIsSubmitting(false);
         }
     };
 
     return (
-        <div className="order-form-container">
-            <h2>Create New Order</h2>
-            <form onSubmit={handleSubmit} className="order-form">
+        <div className="order-form">
+            <form onSubmit={handleSubmit}>
                 <div className="form-group">
                     <label htmlFor="userId">User ID:</label>
                     <input
@@ -52,19 +53,24 @@ const OrderForm = ({ onOrderCreated }) => {
                         id="amount"
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
-                        step="0.01"
-                        min="0.01"
-                        required
-                        className="form-control"
                         placeholder="Enter amount"
+                        required
+                        min="0.1"
+                        step="0.1"
+                        className="form-control"
                     />
                 </div>
-                <button type="submit" className="submit-button" disabled={loading}>
-                    {loading ? 'Creating...' : 'Create Order'}
+                <button
+                    type="submit"
+                    className="submit-button"
+                    disabled={isSubmitting}
+                >
+                    {isSubmitting ? 'Creating...' : 'Create Order'}
                 </button>
-                {error && <div className="error-message">{error}</div>}
-                {success && <div className="success-message">{success}</div>}
             </form>
+
+            {error && <div className="error-message">{error}</div>}
+            {successMessage && <div className="success-message">{successMessage}</div>}
         </div>
     );
 };

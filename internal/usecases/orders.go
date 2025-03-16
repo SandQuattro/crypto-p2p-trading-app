@@ -28,7 +28,3 @@ func (os *OrderService) GetUserOrders(ctx context.Context, userID int) ([]entiti
 func (os *OrderService) CreateOrder(ctx context.Context, userID, walletID int, amount string) error {
 	return os.repo.InsertOrder(ctx, userID, walletID, amount)
 }
-
-func (os *OrderService) ChangeOrderStatus(ctx context.Context, walletID int, amount *big.Int) error {
-	return os.repo.UpdateOrderStatus(ctx, walletID, amount)
-}

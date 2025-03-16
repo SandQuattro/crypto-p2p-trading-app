@@ -1,19 +1,31 @@
 import React, {useState} from 'react';
 import OrderForm from './OrderForm';
 import OrdersList from './OrdersList';
+import Modal from './Modal';
 import '../App.css';
 
 const OrdersPage = () => {
     const [userId, setUserId] = useState('1');
     const [refreshTrigger, setRefreshTrigger] = useState(0);
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     const handleOrderCreated = () => {
         // Trigger a refresh of the orders list
         setRefreshTrigger(prev => prev + 1);
+        // Close the modal after order creation
+        setIsModalOpen(false);
     };
 
     const handleUserIdChange = (e) => {
         setUserId(e.target.value);
+    };
+
+    const openModal = () => {
+        setIsModalOpen(true);
+    };
+
+    const closeModal = () => {
+        setIsModalOpen(false);
     };
 
     return (
@@ -32,14 +44,17 @@ const OrdersPage = () => {
                 </select>
             </div>
 
-            <div className="orders-layout">
-                <div className="order-form-section">
-                    <OrderForm onOrderCreated={handleOrderCreated} />
-                </div>
-                <div className="orders-list-section">
-                    <OrdersList userId={userId} refreshTrigger={refreshTrigger} />
-                </div>
+            <button className="add-order-button" onClick={openModal}>
+                Create New Order
+            </button>
+
+            <div className="orders-list-section">
+                <OrdersList userId={userId} refreshTrigger={refreshTrigger} />
             </div>
+
+            <Modal isOpen={isModalOpen} onClose={closeModal} title="Create New Order">
+                <OrderForm onOrderCreated={handleOrderCreated} />
+            </Modal>
         </div>
     );
 };

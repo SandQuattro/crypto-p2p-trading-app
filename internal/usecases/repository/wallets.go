@@ -29,8 +29,8 @@ func NewWalletsRepository(logger *slog.Logger, pg *database.Postgres) *WalletsRe
 	}
 }
 
-// GetWalletByAddress retrieves a wallet by its address.
-func (r *WalletsRepository) GetWalletByAddress(ctx context.Context, address string) (*entities.Wallet, error) {
+// FindWalletByAddress retrieves a wallet by its address.
+func (r *WalletsRepository) FindWalletByAddress(ctx context.Context, address string) (*entities.Wallet, error) {
 	query := `SELECT id, address, derivation_path, created_at 
               FROM wallets 
               WHERE address = $1`
@@ -77,30 +77,6 @@ func (r *WalletsRepository) FindWalletByID(ctx context.Context, id int) (*entiti
 	return &wallet, nil
 }
 
-// FindWalletByAddress retrieves a wallet by its address.
-func (r *WalletsRepository) FindWalletByAddress(ctx context.Context, address string) (*entities.Wallet, error) {
-	query := `SELECT id, address, derivation_path, created_at 
-              FROM wallets 
-              WHERE address = $1`
-
-	var wallet entities.Wallet
-	err := r.db(ctx).QueryRow(ctx, query, address).Scan(
-		&wallet.ID,
-		&wallet.Address,
-		&wallet.DerivationPath,
-		&wallet.CreatedAt,
-	)
-
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	return &wallet, nil
-}
-
 // IsWalletTracked checks if the given address is tracked by our system.
 func (r *WalletsRepository) IsWalletTracked(ctx context.Context, address string) (bool, error) {
 	var exists bool
@@ -111,34 +87,9 @@ func (r *WalletsRepository) IsWalletTracked(ctx context.Context, address string)
 	return exists, nil
 }
 
-// TrackWallet adds a wallet address to the tracking system.
-func (r *WalletsRepository) TrackWallet(ctx context.Context, address string, derivationPath string) error {
-	// Check if wallet already exists
-	exists, err := r.IsWalletTracked(ctx, address)
-	if err != nil {
-		return err
-	}
-
-	if exists {
-		r.logger.Debug("Wallet already tracked", "address", address)
-		return nil
-	}
-
-	// Insert new wallet
-	_, err = r.db(ctx).Exec(ctx,
-		"INSERT INTO wallets (address, derivation_path, created_at) VALUES ($1, $2, $3)",
-		address, derivationPath, time.Now())
-	if err != nil {
-		return fmt.Errorf("failed to insert wallet: %w", err)
-	}
-
-	r.logger.Info("Wallet added to tracking", "address", address)
-	return nil
-}
-
 // GetAllTrackedWallets retrieves all tracked wallet addresses.
 func (r *WalletsRepository) GetAllTrackedWallets(ctx context.Context) ([]entities.Wallet, error) {
-	query := `SELECT id, address, derivation_path, created_at 
+	query := `SELECT id, user_id, address, derivation_path, wallet_index, created_at 
               FROM wallets 
               ORDER BY id`
 
@@ -157,52 +108,6 @@ func (r *WalletsRepository) GetAllTrackedWallets(ctx context.Context) ([]entitie
 	}
 
 	return wallets, nil
-}
-
-// DeleteWallet removes a wallet from tracking.
-func (r *WalletsRepository) DeleteWallet(ctx context.Context, address string) error {
-	_, err := r.db(ctx).Exec(ctx, "DELETE FROM wallets WHERE address = $1", address)
-	if err != nil {
-		return fmt.Errorf("failed to delete wallet: %w", err)
-	}
-
-	r.logger.Info("Wallet removed from tracking", "address", address)
-	return nil
-}
-
-// GetLastWalletIndex retrieves the last used wallet index
-func (r *WalletsRepository) GetLastWalletIndex(ctx context.Context) (uint32, error) {
-	var lastIndex uint32
-	err := r.db(ctx).QueryRow(ctx, "SELECT COALESCE(MAX(wallet_index), 0) FROM wallets").Scan(&lastIndex)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get last wallet index: %w", err)
-	}
-	return lastIndex, nil
-}
-
-// TrackWalletWithIndex adds a wallet address to the tracking system with a specific index
-func (r *WalletsRepository) TrackWalletWithIndex(ctx context.Context, address string, derivationPath string, index uint32) error {
-	// Check if wallet already exists
-	exists, err := r.IsWalletTracked(ctx, address)
-	if err != nil {
-		return err
-	}
-
-	if exists {
-		r.logger.Debug("Wallet already tracked", "address", address)
-		return nil
-	}
-
-	// Insert new wallet with index
-	_, err = r.db(ctx).Exec(ctx,
-		"INSERT INTO wallets (address, derivation_path, wallet_index, created_at) VALUES ($1, $2, $3, $4)",
-		address, derivationPath, index, time.Now())
-	if err != nil {
-		return fmt.Errorf("failed to insert wallet: %w", err)
-	}
-
-	r.logger.Info("Wallet added to tracking", "address", address, "index", index)
-	return nil
 }
 
 // GetLastWalletIndexForUser retrieves the last used wallet index for a specific user

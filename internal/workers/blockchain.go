@@ -1,4 +1,4 @@
-package usecases
+package workers
 
 import (
 	"bytes"
@@ -28,11 +28,11 @@ type BinanceSmartChain struct {
 	logger *slog.Logger
 	config *config.Config
 
-	transactions *TransactionService
-	wallets      *WalletService
+	transactions TransactionService
+	wallets      WalletService
 }
 
-func NewBinanceSmartChain(logger *slog.Logger, config *config.Config, transactions *TransactionService, wallets *WalletService) *BinanceSmartChain {
+func NewBinanceSmartChain(logger *slog.Logger, config *config.Config, transactions TransactionService, wallets WalletService) *BinanceSmartChain {
 	return &BinanceSmartChain{
 		logger:       logger,
 		config:       config,

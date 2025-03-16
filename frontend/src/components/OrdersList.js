@@ -97,12 +97,12 @@ const OrdersList = ({ userId, refreshTrigger }) => {
                     <table className="orders-table">
                         <thead>
                             <tr>
-                                <th>ID</th>
-                                <th>Amount (USDT)</th>
-                                <th>Wallet Address</th>
-                                <th>Status</th>
-                                <th>Created</th>
-                                <th>Updated</th>
+                                <th style={{ width: '5%', minWidth: '40px' }}>ID</th>
+                                <th style={{ width: '10%', minWidth: '80px' }}>Amount<br />(USDT)</th>
+                                <th style={{ width: '40%', minWidth: '300px' }}>Wallet Address</th>
+                                <th style={{ width: '10%', minWidth: '100px', textAlign: 'center' }}>Status</th>
+                                <th style={{ width: '17.5%', minWidth: '140px' }}>Created</th>
+                                <th style={{ width: '17.5%', minWidth: '140px' }}>Updated</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -119,21 +119,25 @@ const OrdersList = ({ userId, refreshTrigger }) => {
                                     <tr key={order.id}>
                                         <td>{order.id}</td>
                                         <td>{order.amount}</td>
-                                        <td className="wallet-address">
-                                            {walletAddress !== "Address unavailable" ? (
-                                                <>
-                                                    <span className="address-text">{`${walletAddress.substring(0, 8)}...${walletAddress.substring(walletAddress.length - 6)}`}</span>
-                                                    <button
-                                                        className="copy-button"
-                                                        onClick={() => copyToClipboard(walletAddress)}
-                                                        title="Copy full address"
-                                                    >
-                                                        📋
-                                                    </button>
-                                                </>
-                                            ) : (
-                                                "Address unavailable"
-                                            )}
+                                        <td>
+                                            <div className="wallet-address">
+                                                {walletAddress !== "Address unavailable" ? (
+                                                    <>
+                                                        <span className="address-text" title={walletAddress}>
+                                                            {walletAddress}
+                                                        </span>
+                                                        <button
+                                                            className="copy-button"
+                                                            onClick={() => copyToClipboard(walletAddress)}
+                                                            title="Copy full address"
+                                                        >
+                                                            📋
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    "Address unavailable"
+                                                )}
+                                            </div>
                                         </td>
                                         <td>
                                             <span className={`status-badge ${getStatusClass(order.status)}`}>

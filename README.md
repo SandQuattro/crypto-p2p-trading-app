@@ -20,14 +20,6 @@ Here's a comprehensive guide to test your cryptocurrency order processing system
 2. Have access to a BSC wallet with some BEP-20 USDT for testing (can use Metamask with BSC Testnet)
 3. Have a tool like Postman or curl for making API requests
 
-## Expected user flow
-
-- User creating order to exchange BEP-20 (BSC Network) USDT for anything, it can be fiat currency, digital product, etc...
-- We're creating unique deposit digital wallet (Secure HD(Hierarchical Deterministic) wallet generation using BIP32/BIP39) for user, if it does not have yet
-- All keys are located in one HD wallet. We can easily backup them using seed phrase
-- We are monitoring blockchain, to see transactions to this wallet and order amount validation
-- When we see transaction to our deposit addresses, we know exactly, who did the transfer
-
 ## Testing Flow
 
 ### Step 1: Create a User Order

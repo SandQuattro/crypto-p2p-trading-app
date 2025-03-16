@@ -7,6 +7,7 @@ import (
 	cfg "github.com/sand/crypto-p2p-trading-app/backend/config"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/mocked"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/repository"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/workers"
 	"github.com/sand/crypto-p2p-trading-app/backend/pkg/database"
 	"log"
 	"log/slog"
@@ -89,7 +90,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bscBlockchain := usecases.NewBinanceSmartChain(logger, config, transactionService, walletService)
+	bscBlockchainProcessor := workers.NewBinanceSmartChain(logger, config, transactionService, walletService)
 
 	// Create handlers
 	websocketManager := handlers.NewWebSocketManager(logger)
@@ -134,7 +135,7 @@ func main() {
 
 	// Start blockchain subscription in a goroutine
 	go func() {
-		bscBlockchain.SubscribeToTransactions(ctx, config.RPCURL)
+		bscBlockchainProcessor.SubscribeToTransactions(ctx, config.RPCURL)
 	}()
 
 	// Set up graceful shutdown
