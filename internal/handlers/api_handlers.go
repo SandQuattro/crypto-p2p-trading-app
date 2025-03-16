@@ -83,8 +83,7 @@ func (h *HTTPHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		wallet = orders[0].Wallet
 		h.logger.Info("Reusing existing wallet for user", "user_id", userID, "wallet", wallet)
 	} else {
-		var err error
-		wallet, err = h.walletService.GenerateWallet()
+		wallet, err = h.walletService.GenerateWallet(r.Context())
 		if err != nil {
 			h.logger.Error("Error generating wallet", "error", err)
 			http.Error(w, fmt.Sprintf("Failed to generate wallet: %v", err), http.StatusInternalServerError)

@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/big"
+	"time"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"math/big"
-	"time"
 )
 
 const (
@@ -143,7 +144,13 @@ func (ws *WalletService) processBlock(ctx context.Context, client *ethclient.Cli
 					}
 
 					// Check if the recipient is one of our wallets
-					if ws.IsOurWallet(recipientAddr) {
+					isOurWallet, err := ws.IsOurWallet(ctx, recipientAddr)
+					if err != nil {
+						ws.logger.Error("Failed to check if wallet is tracked", "error", err)
+						continue
+					}
+
+					if isOurWallet {
 						ws.logger.Info("USDT Transfer to our wallet detected",
 							"tx_hash", tx.Hash().Hex(),
 							"from", sender.Hex(),
@@ -185,7 +192,7 @@ func (ws *WalletService) checkConfirmations(ctx context.Context, client *ethclie
 			// Check if we have enough confirmations
 			if currentBlock-blockNumber >= RequiredConfirmations {
 				// Confirm the transaction
-				if err := ws.transactions.ConfirmTransaction(ctx, txHash.Hex()); err != nil {
+				if err = ws.transactions.ConfirmTransaction(ctx, txHash.Hex()); err != nil {
 					ws.logger.Error("Failed to confirm transaction", "error", err, "tx_hash", txHash.Hex())
 				} else {
 					ws.logger.Info("Transaction confirmed", "tx_hash", txHash.Hex(), "confirmations", currentBlock-blockNumber)

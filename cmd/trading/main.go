@@ -74,6 +74,7 @@ func main() {
 	// Create repositories
 	ordersRepository := repository.NewOrdersRepository(logger, pg)
 	transactionsRepository := repository.NewTransactionsRepository(logger, pg, ordersRepository)
+	walletsRepository := repository.NewWalletsRepository(logger, pg)
 
 	// Create usecases and components
 	dataService := mocked.NewDataService(logger)
@@ -82,7 +83,7 @@ func main() {
 	orderService := usecases.NewOrderService(ordersRepository)
 	transactionService := usecases.NewTransactionService(transactionsRepository)
 
-	walletService, err := usecases.NewWalletService(logger, transactionService, config.WalletSeed)
+	walletService, err := usecases.NewWalletService(logger, config.WalletSeed, transactionService, walletsRepository)
 	if err != nil {
 		logger.Error("Failed to create wallet service", "error", err)
 		log.Fatal(err)
