@@ -629,6 +629,24 @@ You can view transactions for a specific wallet using the API:
 GET /transactions/wallet?wallet=0x123...
 ```
 
+### Handling Mismatched Transaction Amounts
+
+The system handles cases where the transaction amount doesn't exactly match the order amount:
+
+1. **Insufficient Amount**: If a user sends less than the order amount:
+   - The transaction is detected and recorded in the database
+   - The transaction is confirmed after receiving the required confirmations
+   - The order remains in "pending" status, waiting for additional funds
+   - No partial completion is currently supported
+
+2. **Excess Amount**: If a user sends more than the order amount:
+   - The transaction is detected, recorded, and confirmed
+   - The order is marked as "completed"
+   - Excess funds remain in the wallet but are not automatically applied to other orders
+   - The system does not currently provide automatic refunds for excess amounts
+
+This behavior is controlled by the amount comparison logic in the order processing system, which only completes an order when the received amount is greater than or equal to the order amount.
+
 ### Blockchain Monitoring
 
 The application monitors the blockchain for incoming transactions using a polling approach:
