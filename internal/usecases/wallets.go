@@ -36,11 +36,6 @@ func NewWalletService(logger *slog.Logger, transactions *TransactionService, see
 	}, nil
 }
 
-// SetLogger sets the logger for the wallet service
-func (ws *WalletService) SetLogger(logger *slog.Logger) {
-	ws.logger = logger
-}
-
 // IsOurWallet checks if the given address belongs to our system
 func (ws *WalletService) IsOurWallet(address string) bool {
 	ws.walletsMu.RLock()

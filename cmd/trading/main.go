@@ -87,7 +87,6 @@ func main() {
 		logger.Error("Failed to create wallet service", "error", err)
 		log.Fatal(err)
 	}
-	walletService.SetLogger(logger)
 
 	// Create handlers
 	websocketManager := handlers.NewWebSocketManager(logger)
