@@ -21,16 +21,18 @@ type TransactionsRepository struct {
 	db         tx.DBGetter
 	transactor *tx.Transactor
 
-	orders *OrdersRepository
+	orders  *OrdersRepository
+	wallets *WalletsRepository
 }
 
 // NewTransactionsRepository creates a new transaction service.
-func NewTransactionsRepository(logger *slog.Logger, pg *database.Postgres, orders *OrdersRepository) *TransactionsRepository {
+func NewTransactionsRepository(logger *slog.Logger, pg *database.Postgres, orders *OrdersRepository, wallets *WalletsRepository) *TransactionsRepository {
 	return &TransactionsRepository{
 		logger:     logger,
 		db:         pg.DBGetter,
 		transactor: pg.Transactor,
 		orders:     orders,
+		wallets:    wallets,
 	}
 }
 
@@ -124,8 +126,14 @@ func (r *TransactionsRepository) UpdatePendingTransactions(ctx context.Context) 
 			continue
 		}
 
+		wallet, err := r.wallets.FindWalletByAddress(ctx, transaction.WalletAddress)
+		if err != nil {
+			r.logger.Error("Failed to find wallet by address", "error", err, "address", transaction.WalletAddress)
+			continue
+		}
+
 		// Update orders for this wallet
-		if err = r.orders.UpdateOrderStatus(ctx, transaction.WalletAddress, amount); err != nil {
+		if err = r.orders.UpdateOrderStatus(ctx, wallet.ID, amount); err != nil {
 			r.logger.Error("Failed to update order status", "error", err, "tx_hash", transaction.TxHash)
 			continue
 		}

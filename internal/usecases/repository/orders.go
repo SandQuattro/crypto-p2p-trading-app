@@ -25,7 +25,7 @@ func NewOrdersRepository(logger *slog.Logger, pg *database.Postgres) *OrdersRepo
 }
 
 func (r *OrdersRepository) FindUserOrders(ctx context.Context, userID int) ([]entities.Order, error) {
-	rows, err := r.db(ctx).Query(ctx, "SELECT id, user_id, wallet, amount, status FROM orders WHERE user_id = $1", userID)
+	rows, err := r.db(ctx).Query(ctx, "SELECT id, user_id, wallet_id, amount, status FROM orders WHERE user_id = $1", userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -42,14 +42,14 @@ func (r *OrdersRepository) FindUserOrders(ctx context.Context, userID int) ([]en
 	return orders, nil
 }
 
-func (r *OrdersRepository) InsertOrder(ctx context.Context, userID int, amount string, wallet string) error {
-	_, err := r.db(ctx).Exec(ctx, "INSERT INTO orders (user_id, wallet, amount, status) VALUES ($1, $2, $3, 'pending')", userID, wallet, amount)
+func (r *OrdersRepository) InsertOrder(ctx context.Context, userID, walletID int, amount string) error {
+	_, err := r.db(ctx).Exec(ctx, "INSERT INTO orders (user_id, wallet_id, amount, status) VALUES ($1, $2, $3, 'pending')", userID, walletID, amount)
 	return err
 }
 
-func (r *OrdersRepository) UpdateOrderStatus(ctx context.Context, wallet string, amount *big.Int) error {
+func (r *OrdersRepository) UpdateOrderStatus(ctx context.Context, walletID int, amount *big.Int) error {
 	// Get all pending orders for this wallet
-	rows, err := r.db(ctx).Query(ctx, "SELECT id, amount FROM orders WHERE wallet = $1 AND status = 'pending' ORDER BY id", wallet)
+	rows, err := r.db(ctx).Query(ctx, "SELECT id, amount FROM orders WHERE wallet_id = $1 AND status = 'pending' ORDER BY id", walletID)
 	if err != nil {
 		return fmt.Errorf("failed to query pending orders: %w", err)
 	}
@@ -90,7 +90,7 @@ func (r *OrdersRepository) UpdateOrderStatus(ctx context.Context, wallet string,
 				return fmt.Errorf("failed to update order %d: %w", id, err)
 			}
 
-			r.logger.Info("Order completed", "order_id", id, "wallet", wallet, "amount", orderAmountStr)
+			r.logger.Info("Order completed", "order_id", id, "wallet_id", walletID, "amount", orderAmountStr)
 
 			// Subtract the order amount from remaining
 			remainingAmount.Sub(remainingAmount, orderAmount)
@@ -99,7 +99,7 @@ func (r *OrdersRepository) UpdateOrderStatus(ctx context.Context, wallet string,
 	}
 
 	if !ordersUpdated {
-		r.logger.Warn("No orders updated", "wallet", wallet, "amount", amount.String())
+		r.logger.Warn("No orders updated", "wallet_id", walletID, "amount", amount.String())
 		// Don't return an error, as this might be a legitimate case (e.g., partial payment)
 		// Just log a warning instead
 	}

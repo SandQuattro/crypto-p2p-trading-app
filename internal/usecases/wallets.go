@@ -116,9 +116,9 @@ func (bsc *WalletService) IsOurWallet(ctx context.Context, address string) (bool
 }
 
 // GenerateWalletForUser generates a new wallet address for a specific user
-func (bsc *WalletService) GenerateWalletForUser(ctx context.Context, userID int64) (string, error) {
+func (bsc *WalletService) GenerateWalletForUser(ctx context.Context, userID int64) (int, string, error) {
 	if bsc.masterKey == nil {
-		return "", errors.New("master key not initialized")
+		return 0, "", errors.New("master key not initialized")
 	}
 
 	bsc.mu.Lock()
@@ -127,7 +127,7 @@ func (bsc *WalletService) GenerateWalletForUser(ctx context.Context, userID int6
 	// Get the last used index from the database for this user
 	lastIndex, err := bsc.repo.GetLastWalletIndexForUser(ctx, userID)
 	if err != nil {
-		return "", fmt.Errorf("failed to get last wallet index for user %d: %w", userID, err)
+		return 0, "", fmt.Errorf("failed to get last wallet index for user %d: %w", userID, err)
 	}
 
 	// Increment the index for the new wallet
@@ -142,19 +142,20 @@ func (bsc *WalletService) GenerateWalletForUser(ctx context.Context, userID int6
 	childKeyIndex := uint32(userID*1000 + int64(newIndex))
 	childKey, err := bsc.masterKey.NewChildKey(childKeyIndex)
 	if err != nil {
-		return "", fmt.Errorf("failed to create child key: %w", err)
+		return 0, "", fmt.Errorf("failed to create child key: %w", err)
 	}
 
 	privKey, err := crypto.ToECDSA(childKey.Key)
 	if err != nil {
-		return "", fmt.Errorf("failed to convert to ECDSA: %w", err)
+		return 0, "", fmt.Errorf("failed to convert to ECDSA: %w", err)
 	}
 
 	address := crypto.PubkeyToAddress(privKey.PublicKey).Hex()
 
 	// Track this wallet in database with the user ID and index
-	if err = bsc.repo.TrackWalletWithUserAndIndex(ctx, address, derivationPath, userID, newIndex); err != nil {
-		return "", fmt.Errorf("failed to track wallet: %w", err)
+	var walletID int
+	if walletID, err = bsc.repo.TrackWalletWithUserAndIndex(ctx, address, derivationPath, userID, newIndex); err != nil {
+		return 0, "", fmt.Errorf("failed to track wallet: %w", err)
 	}
 
 	// Update in-memory cache
@@ -163,7 +164,7 @@ func (bsc *WalletService) GenerateWalletForUser(ctx context.Context, userID int6
 	bsc.walletsMu.Unlock()
 
 	bsc.logger.Info("Generated new wallet", "address", address, "path", derivationPath, "user", userID, "index", newIndex)
-	return address, nil
+	return walletID, address, nil
 }
 
 // TrackWalletForUser adds a wallet address to the tracking system for a specific user
@@ -178,7 +179,7 @@ func (bsc *WalletService) TrackWalletForUser(ctx context.Context, address string
 	newIndex := lastIndex + 1
 
 	// Track this wallet in database with the user ID and index
-	if err := bsc.repo.TrackWalletWithUserAndIndex(ctx, address, derivationPath, userID, newIndex); err != nil {
+	if _, err := bsc.repo.TrackWalletWithUserAndIndex(ctx, address, derivationPath, userID, newIndex); err != nil {
 		return fmt.Errorf("failed to track wallet: %w", err)
 	}
 
@@ -188,11 +189,6 @@ func (bsc *WalletService) TrackWalletForUser(ctx context.Context, address string
 	bsc.walletsMu.Unlock()
 
 	return nil
-}
-
-// TrackWallet adds a wallet address to the tracking system for the default user
-func (bsc *WalletService) TrackWallet(ctx context.Context, address string, derivationPath string) error {
-	return bsc.TrackWalletForUser(ctx, address, derivationPath, 1)
 }
 
 // GetAllTrackedWalletsForUser retrieves all tracked wallet addresses for a specific user

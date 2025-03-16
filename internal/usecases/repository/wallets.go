@@ -77,6 +77,30 @@ func (r *WalletsRepository) FindWalletByID(ctx context.Context, id int) (*entiti
 	return &wallet, nil
 }
 
+// FindWalletByAddress retrieves a wallet by its address.
+func (r *WalletsRepository) FindWalletByAddress(ctx context.Context, address string) (*entities.Wallet, error) {
+	query := `SELECT id, address, derivation_path, created_at 
+              FROM wallets 
+              WHERE address = $1`
+
+	var wallet entities.Wallet
+	err := r.db(ctx).QueryRow(ctx, query, address).Scan(
+		&wallet.ID,
+		&wallet.Address,
+		&wallet.DerivationPath,
+		&wallet.CreatedAt,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &wallet, nil
+}
+
 // IsWalletTracked checks if the given address is tracked by our system.
 func (r *WalletsRepository) IsWalletTracked(ctx context.Context, address string) (bool, error) {
 	var exists bool
@@ -196,28 +220,29 @@ func (r *WalletsRepository) GetLastWalletIndexForUser(ctx context.Context, userI
 }
 
 // TrackWalletWithUserAndIndex adds a wallet address to the tracking system with a specific user and index
-func (r *WalletsRepository) TrackWalletWithUserAndIndex(ctx context.Context, address string, derivationPath string, userID int64, index uint32) error {
+func (r *WalletsRepository) TrackWalletWithUserAndIndex(ctx context.Context, address string, derivationPath string, userID int64, index uint32) (int, error) {
 	// Check if wallet already exists
 	exists, err := r.IsWalletTracked(ctx, address)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	if exists {
 		r.logger.Debug("Wallet already tracked", "address", address)
-		return nil
+		return 0, nil
 	}
 
+	var id int
 	// Insert new wallet with user ID and index
-	_, err = r.db(ctx).Exec(ctx,
-		"INSERT INTO wallets (address, derivation_path, user_id, wallet_index, created_at) VALUES ($1, $2, $3, $4, $5)",
-		address, derivationPath, userID, index, time.Now())
+	_ = r.db(ctx).QueryRow(ctx,
+		"INSERT INTO wallets (address, derivation_path, user_id, wallet_index, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+		address, derivationPath, userID, index, time.Now()).Scan(&id)
 	if err != nil {
-		return fmt.Errorf("failed to insert wallet: %w", err)
+		return 0, fmt.Errorf("failed to insert wallet: %w", err)
 	}
 
 	r.logger.Info("Wallet added to tracking", "address", address, "user", userID, "index", index)
-	return nil
+	return id, nil
 }
 
 // GetAllTrackedWalletsForUser retrieves all tracked wallet addresses for a specific user.

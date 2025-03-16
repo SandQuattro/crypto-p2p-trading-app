@@ -85,42 +85,30 @@ func (h *HTTPHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := strconv.ParseInt(userIDParam, 10, 64)
 
-	orders, err := h.orderService.GetUserOrders(r.Context(), int(userID))
+	// Here we always generate new deposit wallet for order
+	walletID, address, err := h.walletService.GenerateWalletForUser(r.Context(), userID)
 	if err != nil {
-		h.logger.Error("Error getting user orders", "error", err, "user_id", userID)
-		http.Error(w, fmt.Sprintf("Failed to retrieve user orders: %v", err), http.StatusInternalServerError)
+		h.logger.Error("[Create Order] Error generating wallet", "error", err)
+		http.Error(w, fmt.Sprintf("Failed to generate wallet: %v", err), http.StatusInternalServerError)
 		return
 	}
+	h.logger.Info("Generated new wallet for user", "user_id", userID, "wallet", address)
 
-	var wallet string
-
-	if len(orders) > 0 {
-		wallet, err = h.walletService.GetWalletByID(r.Context(), int(userID))
-		h.logger.Info("Reusing existing wallet for user", "user_id", userID, "wallet", wallet)
-	} else {
-		wallet, err = h.walletService.GenerateWalletForUser(r.Context(), userID)
-		if err != nil {
-			h.logger.Error("Error generating wallet", "error", err)
-			http.Error(w, fmt.Sprintf("Failed to generate wallet: %v", err), http.StatusInternalServerError)
-			return
-		}
-		h.logger.Info("Generated new wallet for user", "user_id", userID, "wallet", wallet)
-	}
-
-	err = h.orderService.CreateOrder(r.Context(), int(userID), amountParam, wallet)
+	err = h.orderService.CreateOrder(r.Context(), int(userID), walletID, amountParam)
 	if err != nil {
-		h.logger.Error("Error creating order", "error", err, "user_id", userID, "wallet", wallet)
+		h.logger.Error("[Create Order] Error creating order", "error", err, "user_id", userID, "wallet", address)
 		http.Error(w, fmt.Sprintf("Failed to create order: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	h.logger.Info("Order created successfully", "user_id", userID, "wallet", wallet, "amount", amountParam)
+	h.logger.Info("[Create Order] Order created successfully", "user_id", userID, "wallet", address, "amount", amountParam)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{
-		"status": "success",
-		"wallet": wallet,
+	json.NewEncoder(w).Encode(map[string]any{
+		"status":    "success",
+		"wallet_id": walletID,
+		"wallet":    address,
 	})
 }
 
@@ -206,23 +194,22 @@ func (h *HTTPHandler) GenerateWallet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var wallet string
-
 	// Generate wallet for the specific user
-	wallet, err = h.walletService.GenerateWalletForUser(r.Context(), userID)
+	walletID, address, err := h.walletService.GenerateWalletForUser(r.Context(), userID)
 	if err != nil {
 		h.logger.Error("Error generating wallet", "error", err, "user_id", userID)
 		http.Error(w, fmt.Sprintf("Failed to generate wallet: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	h.logger.Info("Generated new wallet", "user_id", userID, "wallet", wallet)
+	h.logger.Info("Generated new wallet", "user_id", userID, "wallet", address)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status": "success",
-		"wallet": wallet,
+		"status":    "success",
+		"wallet_id": walletID,
+		"wallet":    address,
 		// Note: We don't have direct access to the index here, but it's stored in the database
 	})
 }

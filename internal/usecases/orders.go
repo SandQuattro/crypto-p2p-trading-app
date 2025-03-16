@@ -9,8 +9,8 @@ import (
 
 type OrdersRepository interface {
 	FindUserOrders(ctx context.Context, userID int) ([]entities.Order, error)
-	InsertOrder(ctx context.Context, userID int, amount string, wallet string) error
-	UpdateOrderStatus(ctx context.Context, wallet string, amount *big.Int) error
+	InsertOrder(ctx context.Context, userID, walletID int, amount string) error
+	UpdateOrderStatus(ctx context.Context, walletID int, amount *big.Int) error
 }
 
 type OrderService struct {
@@ -25,10 +25,10 @@ func (os *OrderService) GetUserOrders(ctx context.Context, userID int) ([]entiti
 	return os.repo.FindUserOrders(ctx, userID)
 }
 
-func (os *OrderService) CreateOrder(ctx context.Context, userID int, amount string, wallet string) error {
-	return os.repo.InsertOrder(ctx, userID, amount, wallet)
+func (os *OrderService) CreateOrder(ctx context.Context, userID, walletID int, amount string) error {
+	return os.repo.InsertOrder(ctx, userID, walletID, amount)
 }
 
-func (os *OrderService) ChangeOrderStatus(ctx context.Context, wallet string, amount *big.Int) error {
-	return os.repo.UpdateOrderStatus(ctx, wallet, amount)
+func (os *OrderService) ChangeOrderStatus(ctx context.Context, walletID int, amount *big.Int) error {
+	return os.repo.UpdateOrderStatus(ctx, walletID, amount)
 }

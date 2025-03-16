@@ -35,7 +35,7 @@ Here's a comprehensive guide to test your cryptocurrency order processing system
 1. **Make a request to create an order**:
 
    ```bash
-   curl -X POST "http://localhost:8080/create_order?user_id=1&amount=2"
+   curl -X POST "http://localhost:8080/create_order?user_id=1&amount=1"
    ```
 
 2. **Expected response**:
@@ -65,7 +65,7 @@ Here's a comprehensive guide to test your cryptocurrency order processing system
        "id": 1,
        "user_id": 1,
        "wallet": "0x123abc...",
-       "amount": "2",
+       "amount": "1",
        "status": "pending"
      }
    ]
@@ -120,7 +120,7 @@ Here's a comprehensive guide to test your cryptocurrency order processing system
 1. **Using Metamask or another BSC wallet**:
    - Connect to BSC network (or BSC Testnet for testing)
    - Add the USDT token contract if not already added
-   - Send the exact amount of USDT (2 in this example) to the wallet address from Step 1
+   - Send the exact amount of USDT (1 in this example) to the wallet address from Step 1
 
 2. Here we have to stop and wait for user to send crypto to generated deposit wallet!
 
@@ -142,7 +142,7 @@ Here's a comprehensive guide to test your cryptocurrency order processing system
        "id": 1,
        "tx_hash": "0xabc123...",
        "wallet": "0x123abc...",
-       "amount": "2",
+       "amount": "1",
        "block_number": 12345678,
        "confirmed": false,
        "created_at": "2023-03-15T12:34:56Z"
@@ -150,7 +150,7 @@ Here's a comprehensive guide to test your cryptocurrency order processing system
    ]
    ```
 
-3. **Wait for confirmations** (the system requires 3 confirmations by default)
+3. **Wait for confirmations** (the system requires some confirmations based on config parameter)
 
 4. **Check again after a few minutes**:
 
@@ -166,7 +166,7 @@ Here's a comprehensive guide to test your cryptocurrency order processing system
        "id": 1,
        "tx_hash": "0xabc123...",
        "wallet": "0x123abc...",
-       "amount": "2",
+       "amount": "1",
        "block_number": 12345678,
        "confirmed": true,
        "created_at": "2023-03-15T12:34:56Z"
@@ -190,7 +190,7 @@ Here's a comprehensive guide to test your cryptocurrency order processing system
        "id": 1,
        "user_id": 1,
        "wallet": "0x123abc...",
-       "amount": "2",
+       "amount": "1",
        "status": "completed"
      }
    ]
@@ -231,7 +231,7 @@ Here's a comprehensive guide to test your cryptocurrency order processing system
        "id": 1,
        "user_id": 1,
        "wallet": "0x123abc...",
-       "amount": "2",
+       "amount": "1",
        "status": "completed"
      },
      {

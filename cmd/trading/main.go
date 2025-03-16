@@ -73,8 +73,8 @@ func main() {
 
 	// Create repositories
 	ordersRepository := repository.NewOrdersRepository(logger, pg)
-	transactionsRepository := repository.NewTransactionsRepository(logger, pg, ordersRepository)
 	walletsRepository := repository.NewWalletsRepository(logger, pg)
+	transactionsRepository := repository.NewTransactionsRepository(logger, pg, ordersRepository, walletsRepository)
 
 	// Create usecases and components
 	dataService := mocked.NewDataService(logger)
