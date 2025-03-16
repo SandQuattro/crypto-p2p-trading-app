@@ -29,6 +29,54 @@ func NewWalletsRepository(logger *slog.Logger, pg *database.Postgres) *WalletsRe
 	}
 }
 
+// GetWalletByAddress retrieves a wallet by its address.
+func (r *WalletsRepository) GetWalletByAddress(ctx context.Context, address string) (*entities.Wallet, error) {
+	query := `SELECT id, address, derivation_path, created_at 
+              FROM wallets 
+              WHERE address = $1`
+
+	var wallet entities.Wallet
+	err := r.db(ctx).QueryRow(ctx, query, address).Scan(
+		&wallet.ID,
+		&wallet.Address,
+		&wallet.DerivationPath,
+		&wallet.CreatedAt,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &wallet, nil
+}
+
+// FindWalletByID retrieves a wallet by its id.
+func (r *WalletsRepository) FindWalletByID(ctx context.Context, id int) (*entities.Wallet, error) {
+	query := `SELECT id, address, derivation_path, created_at 
+              FROM wallets 
+              WHERE id = $1`
+
+	var wallet entities.Wallet
+	err := r.db(ctx).QueryRow(ctx, query, id).Scan(
+		&wallet.ID,
+		&wallet.Address,
+		&wallet.DerivationPath,
+		&wallet.CreatedAt,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &wallet, nil
+}
+
 // IsWalletTracked checks if the given address is tracked by our system.
 func (r *WalletsRepository) IsWalletTracked(ctx context.Context, address string) (bool, error) {
 	var exists bool
@@ -85,30 +133,6 @@ func (r *WalletsRepository) GetAllTrackedWallets(ctx context.Context) ([]entitie
 	}
 
 	return wallets, nil
-}
-
-// GetWalletByAddress retrieves a wallet by its address.
-func (r *WalletsRepository) GetWalletByAddress(ctx context.Context, address string) (*entities.Wallet, error) {
-	query := `SELECT id, address, derivation_path, created_at 
-              FROM wallets 
-              WHERE address = $1`
-
-	var wallet entities.Wallet
-	err := r.db(ctx).QueryRow(ctx, query, address).Scan(
-		&wallet.ID,
-		&wallet.Address,
-		&wallet.DerivationPath,
-		&wallet.CreatedAt,
-	)
-
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	return &wallet, nil
 }
 
 // DeleteWallet removes a wallet from tracking.
@@ -208,13 +232,13 @@ func (r *WalletsRepository) GetAllTrackedWalletsForUser(ctx context.Context, use
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getAllTrackedWalletsForUser query error, %w", err)
 	}
 
 	wallets, err := pgx.CollectRows(rows, pgx.RowToStructByName[entities.Wallet])
 	if err != nil {
 		r.logger.Error("failed to collect wallets rows", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("getAllTrackedWalletsForUser collect rows error, %w", err)
 	}
 
 	return wallets, nil

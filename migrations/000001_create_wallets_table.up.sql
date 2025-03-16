@@ -4,9 +4,8 @@ create table if not exists wallets
     user_id         bigint       not null,
     address         varchar(255) not null unique,
     derivation_path varchar(255) not null,
-    created_at      timestamp with time zone default CURRENT_TIMESTAMP,
     wallet_index    integer                  default 0,
-
+    created_at      timestamp with time zone default CURRENT_TIMESTAMP,
     constraint unique_user_wallet_index
         unique (user_id, wallet_index)
 );

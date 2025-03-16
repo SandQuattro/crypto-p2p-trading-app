@@ -51,15 +51,25 @@ func NewWalletService(
 	}
 
 	// Load tracked wallets from database into memory cache
-	if err = ws.loadWalletsFromDB(context.Background()); err != nil {
+	if err = ws.LoadWalletsFromDB(context.Background()); err != nil {
 		logger.Error("Failed to load wallets from database", "error", err)
 	}
 
 	return ws, nil
 }
 
-// loadWalletsFromDB loads all tracked wallets from the database into memory
-func (bsc *WalletService) loadWalletsFromDB(ctx context.Context) error {
+// GetWalletByID retrieves wallet by its ID
+func (bsc *WalletService) GetWalletByID(ctx context.Context, id int) (string, error) {
+	wallet, err := bsc.repo.FindWalletByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+
+	return wallet.Address, nil
+}
+
+// LoadWalletsFromDB loads all tracked wallets from the database into memory
+func (bsc *WalletService) LoadWalletsFromDB(ctx context.Context) error {
 	wallets, err := bsc.repo.GetAllTrackedWallets(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get tracked wallets: %w", err)
@@ -154,11 +164,6 @@ func (bsc *WalletService) GenerateWalletForUser(ctx context.Context, userID int6
 
 	bsc.logger.Info("Generated new wallet", "address", address, "path", derivationPath, "user", userID, "index", newIndex)
 	return address, nil
-}
-
-// GenerateWallet generates a new wallet address for the default user (user ID 1)
-func (bsc *WalletService) GenerateWallet(ctx context.Context) (string, error) {
-	return bsc.GenerateWalletForUser(ctx, 1)
 }
 
 // TrackWalletForUser adds a wallet address to the tracking system for a specific user

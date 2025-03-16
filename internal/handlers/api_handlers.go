@@ -95,7 +95,7 @@ func (h *HTTPHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	var wallet string
 
 	if len(orders) > 0 {
-		wallet = orders[0].Wallet
+		wallet, err = h.walletService.GetWalletByID(r.Context(), int(userID))
 		h.logger.Info("Reusing existing wallet for user", "user_id", userID, "wallet", wallet)
 	} else {
 		wallet, err = h.walletService.GenerateWalletForUser(r.Context(), userID)
