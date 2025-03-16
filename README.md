@@ -1,3 +1,278 @@
+## Order Processing System
+
+The application includes a complete order processing system for cryptocurrency transactions
+
+Expected user flow:
+- User creating order to exchange BEP-20 (BSC Network) USDT for anything, it can be fiat currency, digital product, etc...
+- We're creating unique deposit digital wallet (Secure HD(Hierarchical Deterministic) wallet generation using BIP32/BIP39) for user, if it does not have yet
+- All keys are located in one HD wallet. We can easily backup them using seed phrase
+- We are monitoring blockchain, to see transactions to this wallet and order amount validation
+- When we see transaction to our deposit addresses, we know exactly, who did the transfer
+
+### Features
+
+- **Wallet Generation**: Secure HD wallet generation using BIP32/BIP39, Metamask-like
+- **Sequential Wallet Indices**: Deterministic wallet generation with sequential indices per user
+- **User-Specific Wallet Management**: Support for multiple users with isolated wallet sequences
+- **Transaction Monitoring**: Real-time monitoring of blockchain transactions
+- **Order Management**: Create and track orders with status updates
+- **USDT Support**: Process BEP-20 USDT transactions on Binance Smart Chain
+
+### How It Works
+
+1. **Order Creation**:
+   - User creates an order specifying the amount
+   - System generates a unique wallet address for the user with a sequential index
+   - Order is stored with 'pending' status
+
+2. **Wallet Management**:
+   - Each user has their own sequence of wallet indices
+   - Wallets are generated deterministically using BIP32/BIP39
+   - Indices are stored in the database for persistence across server restarts
+   - The system ensures uniqueness of indices per user
+
+3. **Transaction Monitoring**:
+   - System subscribes to new blocks on the blockchain
+   - For each block, it analyzes transactions to detect USDT transfers
+   - When a transfer to a system-generated wallet is detected, the corresponding order is updated
+
+4. **Order Completion**:
+   - When sufficient funds are received, the order status is updated to 'completed'
+   - Multiple orders can be processed for the same wallet address
+
+### Configuration
+
+The blockchain integration can be configured using environment variables:
+
+```bash
+# Blockchain RPC URL
+RPC_URL=https://bsc-dataseed.binance.org/
+
+# Wallet seed phrase (KEEP THIS SECURE!)
+WALLET_SEED=your secure seed phrase here
+
+# Database connection string
+DATABASE_URL=postgres://user:password@pgpool:5432/exchange
+```
+
+### Database Schema
+
+The system uses a PostgreSQL database with the following schema:
+
+```sql
+-- Orders table
+CREATE TABLE orders (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL,
+    wallet VARCHAR(255) NOT NULL,
+    amount VARCHAR(255) NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending'
+);
+
+CREATE INDEX idx_orders_wallet ON orders(wallet);
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+
+-- Wallets table
+CREATE TABLE wallets (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL,
+    address VARCHAR(255) NOT NULL UNIQUE,
+    derivation_path VARCHAR(255) NOT NULL,
+    wallet_index INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_wallets_address ON wallets(address);
+CREATE INDEX idx_wallets_user_id ON wallets(user_id);
+CREATE INDEX idx_wallets_index ON wallets(wallet_index);
+ALTER TABLE wallets ADD CONSTRAINT unique_user_wallet_index UNIQUE (user_id, wallet_index);
+```
+
+### API Endpoints
+
+#### Create Order
+
+```
+POST /create_order?user_id=USER_ID&amount=AMOUNT
+```
+
+**Response**:
+
+```json
+{
+  "status": "success",
+  "wallet": "0x123abc..."
+}
+```
+
+#### Generate Wallet
+
+```
+POST /generate_wallet?user_id=USER_ID
+```
+
+**Response**:
+
+```json
+{
+  "status": "success",
+  "wallet": "0x123abc..."
+}
+```
+
+#### Get User Orders
+
+```
+GET /orders/user?user_id=USER_ID
+```
+
+**Response**:
+
+```json
+[
+  {
+    "id": 1,
+    "user_id": "user123",
+    "wallet": "0x123abc...",
+    "amount": "100.0",
+    "status": "pending"
+  },
+  {
+    "id": 2,
+    "user_id": "user123",
+    "wallet": "0x123abc...",
+    "amount": "50.0",
+    "status": "completed"
+  }
+]
+```
+
+#### Get User Wallets
+
+```
+GET /wallets/user?user_id=USER_ID
+```
+
+**Response**:
+
+```json
+[
+  {
+    "address": "0x123abc..."
+  },
+  {
+    "address": "0x456def..."
+  }
+]
+```
+
+#### Get Wallet Transactions
+
+```
+GET /transactions/wallet?wallet=WALLET_ADDRESS
+```
+
+**Response**:
+
+```json
+[
+  {
+    "id": 1,
+    "tx_hash": "0xabc123...",
+    "wallet": "0x123abc...",
+    "amount": "100.0",
+    "block_number": 12345678,
+    "confirmed": true,
+    "created_at": "2023-03-15T12:34:56Z"
+  }
+]
+```
+
+### Future API Enhancements
+
+In future updates, the wallet management API will be enhanced to include:
+
+1. Wallet indices in responses
+2. Creation timestamps for wallets
+3. Additional wallet metadata
+4. Pagination for large wallet collections
+
+### Planned API Endpoints
+
+The following API endpoints are planned for future implementation to support the enhanced wallet management system:
+
+#### Get User Wallets (Planned)
+
+```
+
+### Database Setup
+
+The application uses PostgreSQL for storing order data. The database is automatically set up when running with Docker:
+
+1. PostgreSQL database runs on port 5432
+2. PgAdmin web interface is available at <http://localhost:5050> (login: <admin@admin.com> / password: admin)
+3. Database migrations are automatically applied on application startup
+
+#### Manual Database Setup
+
+If you're not using Docker, you'll need to set up PostgreSQL manually:
+
+1. Install PostgreSQL on your system
+2. Create a database named `exchange`
+3. Set the `DATABASE_URL` environment variable:
+
+   ```bash
+   export DATABASE_URL="postgres://username:password@localhost:5432/exchange?sslmode=disable"
+   ```
+
+#### Database Migrations
+
+The application uses golang-migrate for database migrations. Migrations are stored in the `migrations` directory and are automatically applied when the application starts.
+
+To manually run migrations:
+
+```bash
+# Install golang-migrate CLI
+go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+
+# Run migrations
+migrate -path ./migrations -database "${DATABASE_URL}" up
+```
+
+To create a new migration:
+
+```bash
+migrate create -ext sql -dir ./migrations -seq migration_name
+```
+
+### Transaction Tracking
+
+The application tracks blockchain transactions for generated wallets:
+
+1. When a user creates an order, they receive a unique wallet address.
+2. The system monitors the blockchain for incoming transactions to these wallets.
+3. When a transaction is detected, it's recorded in the database and monitored for confirmations.
+4. Once a transaction has enough confirmations, it's marked as confirmed and processed.
+5. During processing, the system updates the status of any pending orders associated with the wallet.
+
+You can view transactions for a specific wallet using the API:
+
+```
+GET /transactions/wallet?wallet=0x123...
+```
+
+### Blockchain Monitoring
+
+The application monitors the blockchain for incoming transactions using a polling approach:
+
+1. The system polls for new blocks every 5 seconds
+2. When new blocks are detected, each block is processed to find relevant transactions
+3. For USDT transfers to system-generated wallets, transactions are recorded in the database
+4. After a transaction receives the required number of confirmations, it's marked as confirmed
+5. Confirmed transactions are processed to update order statuses
+
+This approach ensures reliable transaction monitoring even when using public RPC endpoints that don't support WebSocket subscriptions.
+
 # Crypto P2P Trading
 
 This application is designed for visualizing the processing of p2p orders, allowing users to sell crypto for fiat currency. It provides a seamless experience for users looking to engage in p2p trading, ensuring secure and efficient transactions.
@@ -13,7 +288,7 @@ This application is designed for visualizing the processing of p2p orders, allow
 - Real-time trading data visualization with WebSockets
 - Candlestick charts for multiple trading pairs
 - Order processing with high throughput (up to 3000 orders per second)
-- Wallet generation and management
+- Secure HD wallet generation with sequential indices and user-specific management
 - Blockchain transaction monitoring and processing
 - Database integration with PostgreSQL for order and transaction storage
 - Automatic database migrations
@@ -438,175 +713,3 @@ The application tracks and calculates the order processing speed (orders per sec
 ## License
 
 MIT
-
-## Order Processing System
-
-The application includes a complete order processing system for cryptocurrency transactions:
-
-### Features
-
-- **Wallet Generation**: Secure HD wallet generation using BIP32/BIP39, Metamask-like
-- Generating BSC (BEP-20) wallet, no need to add it to blockchain. In Ethereum-like blockchains (BSC, Polygon, Avalanche...) address exists, even if it is empty.
-- **Transaction Monitoring**: Real-time monitoring of blockchain transactions
-- **Order Management**: Create and track orders with status updates
-- **USDT Support**: Process BEP-20 USDT transactions on Binance Smart Chain
-
-### How It Works
-
-1. **Order Creation**:
-   - User creates an order specifying the amount
-   - System generates a unique wallet address for the user (or reuses an existing one)
-   - Order is stored with 'pending' status
-
-2. **Transaction Monitoring**:
-   - System subscribes to new blocks on the blockchain
-   - For each block, it analyzes transactions to detect USDT transfers
-   - When a transfer to a system-generated wallet is detected, the corresponding order is updated
-
-3. **Order Completion**:
-   - When sufficient funds are received, the order status is updated to 'completed'
-   - Multiple orders can be processed for the same wallet address
-
-### Configuration
-
-The blockchain integration can be configured using environment variables:
-
-```bash
-# Blockchain RPC URL
-RPC_URL=https://bsc-dataseed.binance.org/
-
-# Wallet seed phrase (KEEP THIS SECURE!)
-WALLET_SEED=your secure seed phrase here
-
-# Database connection string
-DATABASE_URL=postgres://user:password@pgpool:5432/exchange
-```
-
-### Database Schema
-
-The system uses a PostgreSQL database with the following schema:
-
-```sql
-CREATE TABLE orders (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR(255) NOT NULL,
-    wallet VARCHAR(255) NOT NULL,
-    amount VARCHAR(255) NOT NULL,
-    status VARCHAR(50) NOT NULL DEFAULT 'pending'
-);
-
-CREATE INDEX idx_orders_wallet ON orders(wallet);
-CREATE INDEX idx_orders_user_id ON orders(user_id);
-```
-
-### API Endpoints
-
-#### Create Order
-
-```
-POST /create_order?user_id=USER_ID&amount=AMOUNT
-```
-
-**Response**:
-
-```json
-{
-  "status": "success",
-  "wallet": "0x123abc..."
-}
-```
-
-#### Get User Orders
-
-```
-GET /orders/user?user_id=USER_ID
-```
-
-**Response**:
-
-```json
-[
-  {
-    "id": 1,
-    "user_id": "user123",
-    "wallet": "0x123abc...",
-    "amount": "100.0",
-    "status": "pending"
-  },
-  {
-    "id": 2,
-    "user_id": "user123",
-    "wallet": "0x123abc...",
-    "amount": "50.0",
-    "status": "completed"
-  }
-]
-```
-
-### Database Setup
-
-The application uses PostgreSQL for storing order data. The database is automatically set up when running with Docker:
-
-1. PostgreSQL database runs on port 5432
-2. PgAdmin web interface is available at <http://localhost:5050> (login: <admin@admin.com> / password: admin)
-3. Database migrations are automatically applied on application startup
-
-#### Manual Database Setup
-
-If you're not using Docker, you'll need to set up PostgreSQL manually:
-
-1. Install PostgreSQL on your system
-2. Create a database named `exchange`
-3. Set the `DATABASE_URL` environment variable:
-
-   ```bash
-   export DATABASE_URL="postgres://username:password@localhost:5432/exchange?sslmode=disable"
-   ```
-
-#### Database Migrations
-
-The application uses golang-migrate for database migrations. Migrations are stored in the `migrations` directory and are automatically applied when the application starts.
-
-To manually run migrations:
-
-```bash
-# Install golang-migrate CLI
-go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-
-# Run migrations
-migrate -path ./migrations -database "${DATABASE_URL}" up
-```
-
-To create a new migration:
-
-```bash
-migrate create -ext sql -dir ./migrations -seq migration_name
-```
-
-### Transaction Tracking
-
-The application tracks blockchain transactions for generated wallets:
-
-1. When a user creates an order, they receive a unique wallet address.
-2. The system monitors the blockchain for incoming transactions to these wallets.
-3. When a transaction is detected, it's recorded in the database and monitored for confirmations.
-4. Once a transaction has enough confirmations, it's marked as confirmed and processed.
-5. During processing, the system updates the status of any pending orders associated with the wallet.
-
-You can view transactions for a specific wallet using the API:
-
-```
-GET /transactions/wallet?wallet=0x123...
-```
-
-### Blockchain Monitoring
-
-The application monitors the blockchain for incoming transactions using a polling approach:
-
-1. The system polls for new blocks every 5 seconds
-2. When new blocks are detected, each block is processed to find relevant transactions
-3. For USDT transfers to system-generated wallets, transactions are recorded in the database
-4. After a transaction receives the required number of confirmations, it's marked as confirmed
-5. Confirmed transactions are processed to update order statuses
-
-This approach ensures reliable transaction monitoring even when using public RPC endpoints that don't support WebSocket subscriptions.

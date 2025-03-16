@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/mocked"
 	"log/slog"
 	"net/http"
+
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/mocked"
 
 	"github.com/gorilla/mux"
 
@@ -37,6 +38,10 @@ func (h *HTTPHandler) RegisterRoutes(router *mux.Router) {
 	// Orders
 	router.HandleFunc("/orders/user", h.GetUserOrders).Methods("GET")
 	router.HandleFunc("/create_order", h.CreateOrder).Methods("POST")
+
+	// Wallets
+	router.HandleFunc("/generate_wallet", h.GenerateWallet).Methods("POST")
+	router.HandleFunc("/wallets/user", h.GetUserWallets).Methods("GET")
 
 	// Transactions
 	router.HandleFunc("/transactions/wallet", h.GetWalletTransactions).Methods("GET")
@@ -172,4 +177,66 @@ func (h *HTTPHandler) GetWalletTransactions(w http.ResponseWriter, r *http.Reque
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(transactions)
+}
+
+// GenerateWallet generates a new wallet for a specific user
+func (h *HTTPHandler) GenerateWallet(w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		h.logger.Error("Error, user was not provided")
+		http.Error(w, fmt.Sprintf("Failed to generate wallet"), http.StatusBadRequest)
+		return
+	}
+
+	var wallet string
+	var err error
+
+	// Generate wallet for the specific user
+	wallet, err = h.walletService.GenerateWalletForUser(r.Context(), userID)
+	if err != nil {
+		h.logger.Error("Error generating wallet", "error", err, "user_id", userID)
+		http.Error(w, fmt.Sprintf("Failed to generate wallet: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("Generated new wallet", "user_id", userID, "wallet", wallet)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"wallet": wallet,
+		// Note: We don't have direct access to the index here, but it's stored in the database
+	})
+}
+
+// GetUserWallets returns all wallets for a specific user
+func (h *HTTPHandler) GetUserWallets(w http.ResponseWriter, r *http.Request) {
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		userID = "default" // Use default user ID if none provided
+	}
+
+	wallets, err := h.walletService.GetAllTrackedWalletsForUser(r.Context(), userID)
+	if err != nil {
+		h.logger.Error("Error getting user wallets", "error", err, "user_id", userID)
+		http.Error(w, fmt.Sprintf("Failed to retrieve wallets: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Convert to a more user-friendly format
+	// Note: We don't have direct access to the index and created_at here
+	// In a real implementation, you would return more detailed wallet information
+	response := make([]map[string]interface{}, len(wallets))
+	for i, address := range wallets {
+		response[i] = map[string]interface{}{
+			"address": address,
+			// In a real implementation, you would include these from the database
+			// "index": ...,
+			// "created_at": ...,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
