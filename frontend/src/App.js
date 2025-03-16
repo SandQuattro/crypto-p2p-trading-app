@@ -2,7 +2,10 @@ import React, {useEffect, useState} from 'react';
 import TradingChart from './components/TradingChart';
 import PairSelector from './components/PairSelector';
 import PriceDisplay from './components/PriceDisplay';
+import Navigation from './components/Navigation';
+import OrdersPage from './components/OrdersPage';
 import {fetchTradingPairs} from './services/api';
+import './App.css';
 
 function App() {
   const [tradingPairs, setTradingPairs] = useState([]);
@@ -13,6 +16,7 @@ function App() {
     ordersPerSecond: 0
   });
   const [isLoaded, setIsLoaded] = useState(false);
+  const [activeTab, setActiveTab] = useState('trading');
 
   useEffect(() => {
     const loadTradingPairs = async () => {
@@ -79,44 +83,54 @@ function App() {
     }
   };
 
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+  };
+
+  const renderTradingView = () => (
+    <div className="trading-container">
+      <PairSelector
+        pairs={tradingPairs
+          .map(p => p.symbol)
+          .sort((a, b) => {
+            // Fixed order of pairs
+            const order = {
+              'BTCRUB': 1,
+              'ETHRUB': 2,
+              'SOLRUB': 3,
+              'BNBRUB': 4,
+              'XRPRUB': 5
+            };
+            return (order[a] || 999) - (order[b] || 999);
+          })}
+        selectedPair={selectedPair}
+        onSelectPair={handleSelectPair}
+      />
+      <PriceDisplay
+        symbol={selectedPair}
+        lastPrice={pairData.lastPrice}
+        priceChange={pairData.priceChange}
+        ordersPerSecond={pairData.ordersPerSecond}
+      />
+      {isLoaded && selectedPair && (
+        <div className="chart-container">
+          <TradingChart
+            key={selectedPair}
+            symbol={selectedPair}
+          />
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="app-container">
       <header className="header">
         <h1>Crypto P2P Trading</h1>
+        <Navigation activeTab={activeTab} onTabChange={handleTabChange} />
       </header>
-      <div className="trading-container">
-        <PairSelector
-          pairs={tradingPairs
-            .map(p => p.symbol)
-            .sort((a, b) => {
-              // Fixed order of pairs
-              const order = {
-                'BTCRUB': 1,
-                'ETHRUB': 2,
-                'SOLRUB': 3,
-                'BNBRUB': 4,
-                'XRPRUB': 5
-              };
-              return (order[a] || 999) - (order[b] || 999);
-            })}
-          selectedPair={selectedPair}
-          onSelectPair={handleSelectPair}
-        />
-        <PriceDisplay
-          symbol={selectedPair}
-          lastPrice={pairData.lastPrice}
-          priceChange={pairData.priceChange}
-          ordersPerSecond={pairData.ordersPerSecond}
-        />
-        {isLoaded && selectedPair && (
-          <div className="chart-container">
-            <TradingChart
-              key={selectedPair}
-              symbol={selectedPair}
-            />
-          </div>
-        )}
-      </div>
+
+      {activeTab === 'trading' ? renderTradingView() : <OrdersPage />}
     </div>
   );
 }
