@@ -26,16 +26,18 @@ func NewOrdersRepository(logger *slog.Logger, pg *database.Postgres) *OrdersRepo
 
 func (r *OrdersRepository) FindUserOrders(ctx context.Context, userID int) ([]entities.Order, error) {
 	rows, err := r.db(ctx).Query(ctx, "SELECT id, user_id, wallet_id, amount, status, created_at, updated_at FROM orders WHERE user_id = $1", userID)
+	defer rows.Close()
+
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query user orders: %w", err)
 	}
 
 	orders, err := pgx.CollectRows(rows, pgx.RowToStructByName[entities.Order])
 	if err != nil {
-		slog.Error("failed to collect orders rows", "error", err)
+		r.logger.Error("failed to collect orders rows", "error", err)
 		return nil, err
 	}
 
@@ -49,27 +51,31 @@ func (r *OrdersRepository) InsertOrder(ctx context.Context, userID, walletID int
 
 func (r *OrdersRepository) UpdateOrderStatus(ctx context.Context, walletID int, amount *big.Int) error {
 	// Get all pending orders for this wallet
-	rows, err := r.db(ctx).Query(ctx, "SELECT id, amount FROM orders WHERE wallet_id = $1 AND status = 'pending' ORDER BY id", walletID)
-	if err != nil {
-		return fmt.Errorf("failed to query pending orders: %w", err)
-	}
+	rows, err := r.db(ctx).Query(ctx, "SELECT * FROM orders WHERE wallet_id = $1 AND status = 'pending' ORDER BY id", walletID)
 	defer rows.Close()
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to query pending orders by wallet id: %w", err)
+	}
+
+	orders, err := pgx.CollectRows(rows, pgx.RowToStructByName[entities.Order])
+	if err != nil {
+		slog.Error("failed to collect orders rows", "error", err)
+		return err
+	}
 
 	var ordersUpdated bool
 	remainingAmount := new(big.Int).Set(amount)
 
-	for rows.Next() {
-		var id int
-		var orderAmountStr string
-
-		if err = rows.Scan(&id, &orderAmountStr); err != nil {
-			return fmt.Errorf("failed to scan order: %w", err)
-		}
+	for _, order := range orders {
 
 		// Convert order amount to big.Float for decimal handling
-		orderAmountFloat, _, err := new(big.Float).Parse(orderAmountStr, 10)
+		orderAmountFloat, _, err := new(big.Float).Parse(order.Amount, 10)
 		if err != nil {
-			return fmt.Errorf("invalid amount format in database for order %d: %w", id, err)
+			return fmt.Errorf("invalid amount format in database for order %d: %w", order.ID, err)
 		}
 
 		// Convert to wei (multiply by 10^18)
@@ -80,17 +86,17 @@ func (r *OrdersRepository) UpdateOrderStatus(ctx context.Context, walletID int, 
 		orderAmount := new(big.Int)
 		orderAmountInWei.Int(orderAmount)
 
-		r.logger.Info("Comparing amounts", "order_id", id, "order_amount", orderAmountStr,
+		r.logger.Info("Comparing amounts", "order_id", order.ID, "order_amount", order.Amount,
 			"order_amount_wei", orderAmount.String(), "transaction_amount", remainingAmount.String())
 
 		// If we have enough to cover this order
 		if remainingAmount.Cmp(orderAmount) >= 0 {
-			_, err = r.db(ctx).Exec(ctx, "UPDATE orders SET status = 'completed', updated_at = NOW() WHERE id = $1", id)
+			_, err = r.db(ctx).Exec(ctx, "UPDATE orders SET status = 'completed', updated_at = NOW() WHERE id = $1", order.ID)
 			if err != nil {
-				return fmt.Errorf("failed to update order %d: %w", id, err)
+				return fmt.Errorf("failed to update order %d: %w", order.ID, err)
 			}
 
-			r.logger.Info("Order completed", "order_id", id, "wallet_id", walletID, "amount", orderAmountStr)
+			r.logger.Info("Order completed", "order_id", order.ID, "wallet_id", walletID, "amount", order.Amount)
 
 			// Subtract the order amount from remaining
 			remainingAmount.Sub(remainingAmount, orderAmount)

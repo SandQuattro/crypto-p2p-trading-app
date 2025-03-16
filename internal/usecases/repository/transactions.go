@@ -44,11 +44,13 @@ func (r *TransactionsRepository) FindTransactionsByWallet(ctx context.Context, w
                ORDER BY id DESC
 `
 	rows, err := r.db(ctx).Query(ctx, query, walletAddress)
+	defer rows.Close()
+
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query transactions by wallet address: %w", err)
 	}
 
 	transactions, err := pgx.CollectRows(rows, pgx.RowToStructByName[entities.Transaction])
@@ -104,11 +106,13 @@ func (r *TransactionsRepository) UpdatePendingTransactions(ctx context.Context) 
 	// Get all confirmed but unprocessed transactions
 	rows, err := r.db(ctx).Query(ctx,
 		"SELECT id, tx_hash, wallet_address, amount FROM transactions WHERE confirmed = true AND processed = false")
+	defer rows.Close()
+
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to query confirmed but unprocessed transactions: %w", err)
 	}
 
 	transactions, err := pgx.CollectRows(rows, pgx.RowToStructByName[entities.ConfirmedUnprocessedTransaction])
