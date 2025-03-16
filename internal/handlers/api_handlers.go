@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/mocked"
 	"log/slog"
 	"net/http"
 
@@ -14,13 +15,13 @@ import (
 
 type HTTPHandler struct {
 	logger             *slog.Logger
-	dataService        *usecases.DataService
+	dataService        *mocked.DataService
 	walletService      WalletService
 	orderService       OrderService
 	transactionService TransactionService
 }
 
-func NewHTTPHandler(logger *slog.Logger, dataService *usecases.DataService, walletService WalletService, orderService OrderService, transactionService TransactionService) *HTTPHandler {
+func NewHTTPHandler(logger *slog.Logger, dataService *mocked.DataService, walletService WalletService, orderService OrderService, transactionService TransactionService) *HTTPHandler {
 	return &HTTPHandler{
 		logger:             logger,
 		dataService:        dataService,

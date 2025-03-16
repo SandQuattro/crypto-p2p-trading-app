@@ -1,14 +1,15 @@
-package usecases
+package mocked
 
 import (
 	"crypto/rand"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases"
 	"log/slog"
 	"math/big"
 	"time"
 
 	"github.com/gorilla/websocket"
 
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/models"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 )
 
 // Constants to avoid magic numbers.
@@ -56,25 +57,25 @@ const (
 )
 
 type DataService struct {
-	TradingPairs map[string]*models.TradingPair
+	TradingPairs map[string]*entities.TradingPair
 	logger       *slog.Logger
 }
 
 func NewDataService(logger *slog.Logger) *DataService {
 	return &DataService{
-		TradingPairs: make(map[string]*models.TradingPair),
+		TradingPairs: make(map[string]*entities.TradingPair),
 		logger:       logger,
 	}
 }
 
 // NewTradingPair creates a new trading pair.
-func NewTradingPair(symbol string, initialPrice float64) *models.TradingPair {
-	return &models.TradingPair{
+func NewTradingPair(symbol string, initialPrice float64) *entities.TradingPair {
+	return &entities.TradingPair{
 		Symbol:          symbol,
 		LastPrice:       initialPrice,
 		PriceChange:     0,
 		OrdersPerSecond: 0,
-		CandleData:      make([]models.CandleData, 0),
+		CandleData:      make([]entities.CandleData, 0),
 		Subscribers:     make(map[*websocket.Conn]bool),
 		StopChan:        make(chan struct{}),
 		LastOrderTime:   time.Now(),
@@ -114,8 +115,8 @@ func (s *DataService) InitializeTradingPairs() {
 
 // updatePriceAndCandle updates the price and current candle.
 func (s *DataService) updatePriceAndCandle(
-	pair *models.TradingPair,
-	currentCandle *models.CandleData,
+	pair *entities.TradingPair,
+	currentCandle *entities.CandleData,
 ) {
 	// Generate a random price variation
 	variation := realtimePriceVariationMin +
@@ -157,7 +158,7 @@ func (s *DataService) updatePriceAndCandle(
 }
 
 // trackOrder increments the order count and calculates orders per second
-func (s *DataService) trackOrder(pair *models.TradingPair) {
+func (s *DataService) trackOrder(pair *entities.TradingPair) {
 	pair.OrderCountMutex.Lock()
 	defer pair.OrderCountMutex.Unlock()
 
@@ -190,8 +191,8 @@ func (s *DataService) trackOrder(pair *models.TradingPair) {
 
 // createNewCandle creates a new candle and adds the current one to history.
 func (s *DataService) createNewCandle(
-	pair *models.TradingPair,
-	currentCandle *models.CandleData,
+	pair *entities.TradingPair,
+	currentCandle *entities.CandleData,
 	roundedTime time.Time,
 ) {
 	pair.Mutex.Lock()
@@ -211,7 +212,7 @@ func (s *DataService) createNewCandle(
 	}
 
 	// Create a new current candle
-	*currentCandle = models.CandleData{
+	*currentCandle = entities.CandleData{
 		Time:   roundedTime.Unix() * timestampMultiplier,
 		Open:   pair.LastPrice,
 		High:   pair.LastPrice,
@@ -237,8 +238,8 @@ func getRoundedTime() time.Time {
 
 // initializeCurrentCandle gets or creates the current candle.
 func (s *DataService) initializeCurrentCandle(
-	pair *models.TradingPair,
-) models.CandleData {
+	pair *entities.TradingPair,
+) entities.CandleData {
 	pair.Mutex.RLock()
 	defer pair.Mutex.RUnlock()
 
@@ -247,7 +248,7 @@ func (s *DataService) initializeCurrentCandle(
 	}
 
 	roundedTime := getRoundedTime()
-	return models.CandleData{
+	return entities.CandleData{
 		Time:   roundedTime.Unix() * timestampMultiplier,
 		Open:   pair.LastPrice,
 		High:   pair.LastPrice,
@@ -258,13 +259,13 @@ func (s *DataService) initializeCurrentCandle(
 }
 
 // handlePriceUpdate handles the price ticker update.
-func (s *DataService) handlePriceUpdate(pair *models.TradingPair, currentCandle *models.CandleData) {
+func (s *DataService) handlePriceUpdate(pair *entities.TradingPair, currentCandle *entities.CandleData) {
 	s.updatePriceAndCandle(pair, currentCandle)
 	s.BroadcastUpdate(pair)
 }
 
 // handleCandleUpdate handles the candle ticker update.
-func (s *DataService) handleCandleUpdate(pair *models.TradingPair, currentCandle *models.CandleData) {
+func (s *DataService) handleCandleUpdate(pair *entities.TradingPair, currentCandle *entities.CandleData) {
 	roundedTime := getRoundedTime()
 
 	// Check if we need to create a new candle
@@ -278,7 +279,7 @@ func (s *DataService) handleCandleUpdate(pair *models.TradingPair, currentCandle
 }
 
 // SimulateTradingData simulates real-time trading data for a pair.
-func (s *DataService) SimulateTradingData(pair *models.TradingPair) {
+func (s *DataService) SimulateTradingData(pair *entities.TradingPair) {
 	// Ticker for price updates (every 500ms)
 	priceTicker := time.NewTicker(time.Duration(priceUpdateInterval) * time.Millisecond)
 	// Ticker for new candles (every 1 second)
@@ -313,7 +314,7 @@ func (s *DataService) SimulateTradingData(pair *models.TradingPair) {
 }
 
 // BroadcastUpdate sends updates to all subscribers.
-func (s *DataService) BroadcastUpdate(pair *models.TradingPair) {
+func (s *DataService) BroadcastUpdate(pair *entities.TradingPair) {
 	pair.Mutex.RLock()
 	defer pair.Mutex.RUnlock()
 
@@ -343,17 +344,17 @@ func (s *DataService) BroadcastUpdate(pair *models.TradingPair) {
 }
 
 // GetCandleData returns candle data for a pair.
-func (s *DataService) GetCandleData(symbol string) ([]models.CandleData, error) {
+func (s *DataService) GetCandleData(symbol string) ([]entities.CandleData, error) {
 	pair, ok := s.TradingPairs[symbol]
 	if !ok {
-		return nil, ErrTradingPairNotFound
+		return nil, usecases.ErrTradingPairNotFound
 	}
 
 	pair.Mutex.RLock()
 	defer pair.Mutex.RUnlock()
 
 	// Return a copy of the data to avoid race conditions
-	result := make([]models.CandleData, len(pair.CandleData))
+	result := make([]entities.CandleData, len(pair.CandleData))
 	copy(result, pair.CandleData)
 
 	return result, nil
@@ -363,7 +364,7 @@ func (s *DataService) GetCandleData(symbol string) ([]models.CandleData, error) 
 func (s *DataService) AddSubscriber(symbol string, conn *websocket.Conn) error {
 	pair, ok := s.TradingPairs[symbol]
 	if !ok {
-		return ErrTradingPairNotFound
+		return usecases.ErrTradingPairNotFound
 	}
 
 	pair.Mutex.Lock()
@@ -377,7 +378,7 @@ func (s *DataService) AddSubscriber(symbol string, conn *websocket.Conn) error {
 func (s *DataService) RemoveSubscriber(symbol string, conn *websocket.Conn) error {
 	pair, ok := s.TradingPairs[symbol]
 	if !ok {
-		return ErrTradingPairNotFound
+		return usecases.ErrTradingPairNotFound
 	}
 
 	pair.Mutex.Lock()

@@ -1,9 +1,9 @@
 package database
 
 import (
-	"clean-arch-template/config"
 	"context"
 	"fmt"
+	"github.com/sand/crypto-p2p-trading-app/backend/config"
 	"log/slog"
 	"time"
 

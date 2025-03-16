@@ -32,23 +32,27 @@ var (
 )
 
 type WalletService struct {
+	logger *slog.Logger
+
 	masterKey *bip32.Key
 	mu        sync.Mutex
 	wallets   map[string]bool // Track generated wallets
 	walletsMu sync.RWMutex    // Mutex for wallets map
-	logger    *slog.Logger
+
+	transactions *TransactionService
 }
 
-func NewWalletService(seed string) (*WalletService, error) {
+func NewWalletService(logger *slog.Logger, transactions *TransactionService, seed string) (*WalletService, error) {
 	seedBytes := bip39.NewSeed(seed, "")
 	masterKey, err := bip32.NewMasterKey(seedBytes)
 	if err != nil {
 		return nil, err
 	}
 	return &WalletService{
-		masterKey: masterKey,
-		wallets:   make(map[string]bool),
-		logger:    slog.Default(),
+		logger:       logger,
+		masterKey:    masterKey,
+		wallets:      make(map[string]bool),
+		transactions: transactions,
 	}, nil
 }
 
@@ -99,8 +103,8 @@ func (ws *WalletService) SubscribeToTransactions(ctx context.Context, ts *Transa
 	for {
 		ws.logger.Info("Starting blockchain monitoring...", "rpc_url", rpcURL)
 
-		if err := ws.pollAndProcess(ctx, ts, rpcURL); err != nil {
-			ws.logger.Info("Blockchain monitoring ended, retrying...", "delay", subscriptionRetryDelay, "error", err)
+		if err := ws.pollAndProcess(ctx, rpcURL); err != nil {
+			ws.logger.Info("Blockchain monitoring error, retrying...", "delay", subscriptionRetryDelay, "error", err)
 			select {
 			case <-ctx.Done():
 				return
@@ -113,7 +117,7 @@ func (ws *WalletService) SubscribeToTransactions(ctx context.Context, ts *Transa
 	}
 }
 
-func (ws *WalletService) pollAndProcess(ctx context.Context, ts *TransactionService, rpcURL string) error {
+func (ws *WalletService) pollAndProcess(ctx context.Context, rpcURL string) error {
 	client, err := ethclient.DialContext(ctx, rpcURL)
 	if err != nil {
 		return fmt.Errorf("failed to connect to Ethereum client: %w", err)
@@ -144,7 +148,7 @@ func (ws *WalletService) pollAndProcess(ctx context.Context, ts *TransactionServ
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-processTicker.C:
-			if err = ts.ProcessPendingTransactions(ctx); err != nil {
+			if err = ws.transactions.ProcessPendingTransactions(ctx); err != nil {
 				ws.logger.Error("Failed to process pending transactions", "error", err)
 			}
 		case <-pollTicker.C:
@@ -167,7 +171,7 @@ func (ws *WalletService) pollAndProcess(ctx context.Context, ts *TransactionServ
 						continue
 					}
 
-					ws.processBlock(ctx, client, ts, block.Header())
+					ws.processBlock(ctx, client, block.Header())
 				}
 
 				lastProcessedBlock = latestBlock
@@ -176,7 +180,7 @@ func (ws *WalletService) pollAndProcess(ctx context.Context, ts *TransactionServ
 	}
 }
 
-func (ws *WalletService) processBlock(ctx context.Context, client *ethclient.Client, ts *TransactionService, header *types.Header) {
+func (ws *WalletService) processBlock(ctx context.Context, client *ethclient.Client, header *types.Header) {
 	// Get the block
 	block, err := client.BlockByHash(ctx, header.Hash())
 	if err != nil {
@@ -222,12 +226,12 @@ func (ws *WalletService) processBlock(ctx context.Context, client *ethclient.Cli
 							"amount", amount.String())
 
 						// Record the transaction
-						if err = ts.RecordTransaction(ctx, tx.Hash(), recipientAddr, amount, int64(blockNumber)); err != nil {
+						if err = ws.transactions.RecordTransaction(ctx, tx.Hash(), recipientAddr, amount, int64(blockNumber)); err != nil {
 							ws.logger.Error("Failed to record transaction", "error", err)
 						}
 
 						// Check confirmations after RequiredConfirmations blocks
-						go ws.checkConfirmations(ctx, client, ts, tx.Hash(), blockNumber)
+						go ws.checkConfirmations(ctx, client, tx.Hash(), blockNumber)
 					}
 				}
 			}
@@ -236,7 +240,7 @@ func (ws *WalletService) processBlock(ctx context.Context, client *ethclient.Cli
 }
 
 // checkConfirmations waits for required confirmations and then confirms the transaction
-func (ws *WalletService) checkConfirmations(ctx context.Context, client *ethclient.Client, ts *TransactionService, txHash common.Hash, blockNumber uint64) {
+func (ws *WalletService) checkConfirmations(ctx context.Context, client *ethclient.Client, txHash common.Hash, blockNumber uint64) {
 	// Create a ticker to check every 30 seconds
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -256,7 +260,7 @@ func (ws *WalletService) checkConfirmations(ctx context.Context, client *ethclie
 			// Check if we have enough confirmations
 			if currentBlock-blockNumber >= RequiredConfirmations {
 				// Confirm the transaction
-				if err := ts.ConfirmTransaction(ctx, txHash.Hex()); err != nil {
+				if err := ws.transactions.ConfirmTransaction(ctx, txHash.Hex()); err != nil {
 					ws.logger.Error("Failed to confirm transaction", "error", err, "tx_hash", txHash.Hex())
 				} else {
 					ws.logger.Info("Transaction confirmed", "tx_hash", txHash.Hex(), "confirmations", currentBlock-blockNumber)

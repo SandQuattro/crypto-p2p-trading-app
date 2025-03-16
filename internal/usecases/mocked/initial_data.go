@@ -1,13 +1,13 @@
-package usecases
+package mocked
 
 import (
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/models"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 	"math"
 	"time"
 )
 
 // GenerateInitialCandleData generates initial candle data for a trading pair.
-func (s *DataService) GenerateInitialCandleData(pair *models.TradingPair) {
+func (s *DataService) GenerateInitialCandleData(pair *entities.TradingPair) {
 	now := time.Now()
 	// Round to the beginning of the current 5-minute interval
 	currentInterval := time.Date(
@@ -21,7 +21,7 @@ func (s *DataService) GenerateInitialCandleData(pair *models.TradingPair) {
 	pair.Mutex.Lock()
 	defer pair.Mutex.Unlock()
 
-	pair.CandleData = make([]models.CandleData, 0, maxCandleCount)
+	pair.CandleData = make([]entities.CandleData, 0, maxCandleCount)
 
 	// Base price for the first candle
 	basePrice := pair.LastPrice * basePercentage
@@ -46,7 +46,7 @@ func (s *DataService) GenerateInitialCandleData(pair *models.TradingPair) {
 			secureFloat64(s.logger)*lowPriceVariationRange)
 		volume := defaultVolume + secureFloat64(s.logger)*maxVolumeVariation
 
-		candle := models.CandleData{
+		candle := entities.CandleData{
 			Time:   candleTime.Unix() * timestampMultiplier, // milliseconds
 			Open:   openPrice,
 			High:   high,

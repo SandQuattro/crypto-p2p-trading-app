@@ -5,6 +5,8 @@ import (
 	"errors"
 	"github.com/jackc/pgx/v5"
 	cfg "github.com/sand/crypto-p2p-trading-app/backend/config"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/mocked"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/repository"
 	"github.com/sand/crypto-p2p-trading-app/backend/pkg/database"
 	"log"
 	"log/slog"
@@ -69,23 +71,26 @@ func main() {
 	}
 	logger.Info("Database migrations completed successfully")
 
-	// Create usecases and components
-	websocketManager := handlers.NewWebSocketManager(logger)
+	// Create repositories
+	ordersRepository := repository.NewOrdersRepository(logger, pg)
+	transactionsRepository := repository.NewTransactionsRepository(logger, pg, ordersRepository)
 
-	dataService := usecases.NewDataService(logger)
+	// Create usecases and components
+	dataService := mocked.NewDataService(logger)
 	dataService.InitializeTradingPairs()
 
-	walletService, err := usecases.NewWalletService(config.WalletSeed)
+	orderService := usecases.NewOrderService(ordersRepository)
+	transactionService := usecases.NewTransactionService(transactionsRepository)
+
+	walletService, err := usecases.NewWalletService(logger, transactionService, config.WalletSeed)
 	if err != nil {
 		logger.Error("Failed to create wallet service", "error", err)
 		log.Fatal(err)
 	}
 	walletService.SetLogger(logger)
 
-	orderService := usecases.NewOrderService(pg.Pool)
-	transactionService := usecases.NewTransactionService(pg.Pool, logger, orderService)
-
 	// Create handlers
+	websocketManager := handlers.NewWebSocketManager(logger)
 	httpHandler := handlers.NewHTTPHandler(logger, dataService, walletService, orderService, transactionService)
 	wsHandler := handlers.NewWebSocketHandler(logger, dataService, websocketManager)
 
