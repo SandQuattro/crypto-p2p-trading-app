@@ -89,6 +89,8 @@ func main() {
 		log.Fatal(err)
 	}
 
+	bscBlockchain := usecases.NewBinanceSmartChain(logger, config, transactionService, walletService)
+
 	// Create handlers
 	websocketManager := handlers.NewWebSocketManager(logger)
 	httpHandler := handlers.NewHTTPHandler(logger, dataService, walletService, orderService, transactionService)
@@ -132,7 +134,7 @@ func main() {
 
 	// Start blockchain subscription in a goroutine
 	go func() {
-		walletService.SubscribeToTransactions(ctx, config.RPCURL)
+		bscBlockchain.SubscribeToTransactions(ctx, config.RPCURL)
 	}()
 
 	// Set up graceful shutdown

@@ -19,8 +19,9 @@ type (
 	}
 
 	Blockchain struct {
-		RPCURL     string `json:"rpc_url" toml:"rpc_url" env-default:"https://bsc-dataseed.binance.org/"`
-		WalletSeed string `json:"wallet_seed" toml:"wallet_seed" env-default:"your secure seed phrase here"`
+		RPCURL                string `json:"rpc_url" toml:"rpc_url" env-default:"https://bsc-dataseed.binance.org/"`
+		WalletSeed            string `json:"wallet_seed" toml:"wallet_seed" env-default:"your secure seed phrase here"`
+		RequiredConfirmations uint64 `json:"required_confirmations" toml:"required_confirmations" env-default:"3"`
 	}
 
 	App struct {
