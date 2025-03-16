@@ -158,19 +158,21 @@ func (r *WalletsRepository) TrackWalletWithIndex(ctx context.Context, address st
 }
 
 // GetLastWalletIndexForUser retrieves the last used wallet index for a specific user
-func (r *WalletsRepository) GetLastWalletIndexForUser(ctx context.Context, userID string) (uint32, error) {
+func (r *WalletsRepository) GetLastWalletIndexForUser(ctx context.Context, userID int64) (uint32, error) {
 	var lastIndex uint32
+
 	err := r.db(ctx).QueryRow(ctx,
 		"SELECT COALESCE(MAX(wallet_index), 0) FROM wallets WHERE user_id = $1",
 		userID).Scan(&lastIndex)
+
 	if err != nil {
-		return 0, fmt.Errorf("failed to get last wallet index for user %s: %w", userID, err)
+		return 0, fmt.Errorf("failed to get last wallet index for user %d: %w", userID, err)
 	}
 	return lastIndex, nil
 }
 
 // TrackWalletWithUserAndIndex adds a wallet address to the tracking system with a specific user and index
-func (r *WalletsRepository) TrackWalletWithUserAndIndex(ctx context.Context, address string, derivationPath string, userID string, index uint32) error {
+func (r *WalletsRepository) TrackWalletWithUserAndIndex(ctx context.Context, address string, derivationPath string, userID int64, index uint32) error {
 	// Check if wallet already exists
 	exists, err := r.IsWalletTracked(ctx, address)
 	if err != nil {
@@ -195,7 +197,7 @@ func (r *WalletsRepository) TrackWalletWithUserAndIndex(ctx context.Context, add
 }
 
 // GetAllTrackedWalletsForUser retrieves all tracked wallet addresses for a specific user.
-func (r *WalletsRepository) GetAllTrackedWalletsForUser(ctx context.Context, userID string) ([]entities.Wallet, error) {
+func (r *WalletsRepository) GetAllTrackedWalletsForUser(ctx context.Context, userID int64) ([]entities.Wallet, error) {
 	query := `SELECT id, address, derivation_path, user_id, wallet_index, created_at 
               FROM wallets 
               WHERE user_id = $1

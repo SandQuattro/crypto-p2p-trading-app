@@ -7,8 +7,8 @@ import (
 )
 
 type OrdersRepository interface {
-	FindUserOrders(ctx context.Context, userID string) ([]entities.Order, error)
-	InsertOrder(ctx context.Context, userID, amount string, wallet string) error
+	FindUserOrders(ctx context.Context, userID int) ([]entities.Order, error)
+	InsertOrder(ctx context.Context, userID int, amount string, wallet string) error
 	UpdateOrderStatus(ctx context.Context, wallet string, amount *big.Int) error
 }
 
@@ -20,11 +20,11 @@ func NewOrderService(repo OrdersRepository) *OrderService {
 	return &OrderService{repo: repo}
 }
 
-func (os *OrderService) GetUserOrders(ctx context.Context, userID string) ([]entities.Order, error) {
+func (os *OrderService) GetUserOrders(ctx context.Context, userID int) ([]entities.Order, error) {
 	return os.repo.FindUserOrders(ctx, userID)
 }
 
-func (os *OrderService) CreateOrder(ctx context.Context, userID, amount string, wallet string) error {
+func (os *OrderService) CreateOrder(ctx context.Context, userID int, amount string, wallet string) error {
 	return os.repo.InsertOrder(ctx, userID, amount, wallet)
 }
 

@@ -29,6 +29,9 @@ COPY --from=frontend-builder /app/frontend/build /app/static
 # Copy migrations
 COPY --from=backend-builder /app/migrations /app/migrations
 
+# Copy config directory
+COPY --from=backend-builder /app/config /app/config
+
 # Expose the port
 EXPOSE 8080
 

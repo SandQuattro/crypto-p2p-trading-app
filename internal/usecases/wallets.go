@@ -2,10 +2,12 @@ package usecases
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"golang.org/x/exp/maps"
 	"log/slog"
 	"sync"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -104,9 +106,9 @@ func (bsc *WalletService) IsOurWallet(ctx context.Context, address string) (bool
 }
 
 // GenerateWalletForUser generates a new wallet address for a specific user
-func (bsc *WalletService) GenerateWalletForUser(ctx context.Context, userID string) (string, error) {
-	if userID == "" {
-		userID = "default" // Use a default user ID if none is provided
+func (bsc *WalletService) GenerateWalletForUser(ctx context.Context, userID int64) (string, error) {
+	if bsc.masterKey == nil {
+		return "", errors.New("master key not initialized")
 	}
 
 	bsc.mu.Lock()
@@ -115,7 +117,7 @@ func (bsc *WalletService) GenerateWalletForUser(ctx context.Context, userID stri
 	// Get the last used index from the database for this user
 	lastIndex, err := bsc.repo.GetLastWalletIndexForUser(ctx, userID)
 	if err != nil {
-		return "", fmt.Errorf("failed to get last wallet index for user %s: %w", userID, err)
+		return "", fmt.Errorf("failed to get last wallet index for user %d: %w", userID, err)
 	}
 
 	// Increment the index for the new wallet
@@ -150,21 +152,17 @@ func (bsc *WalletService) GenerateWalletForUser(ctx context.Context, userID stri
 	return address, nil
 }
 
-// GenerateWallet generates a new wallet address for the default user
+// GenerateWallet generates a new wallet address for the default user (user ID 1)
 func (bsc *WalletService) GenerateWallet(ctx context.Context) (string, error) {
-	return bsc.GenerateWalletForUser(ctx, "default")
+	return bsc.GenerateWalletForUser(ctx, 1)
 }
 
 // TrackWalletForUser adds a wallet address to the tracking system for a specific user
-func (bsc *WalletService) TrackWalletForUser(ctx context.Context, address string, derivationPath string, userID string) error {
-	if userID == "" {
-		userID = "default" // Use a default user ID if none is provided
-	}
-
+func (bsc *WalletService) TrackWalletForUser(ctx context.Context, address string, derivationPath string, userID int64) error {
 	// Get the last used index from the database for this user
 	lastIndex, err := bsc.repo.GetLastWalletIndexForUser(ctx, userID)
 	if err != nil {
-		return fmt.Errorf("failed to get last wallet index for user %s: %w", userID, err)
+		return fmt.Errorf("failed to get last wallet index for user %d: %w", userID, err)
 	}
 
 	// Increment the index for the new wallet
@@ -180,24 +178,19 @@ func (bsc *WalletService) TrackWalletForUser(ctx context.Context, address string
 	bsc.wallets[address] = true
 	bsc.walletsMu.Unlock()
 
-	bsc.logger.Info("Wallet added to tracking", "address", address, "path", derivationPath, "user", userID, "index", newIndex)
 	return nil
 }
 
 // TrackWallet adds a wallet address to the tracking system for the default user
 func (bsc *WalletService) TrackWallet(ctx context.Context, address string, derivationPath string) error {
-	return bsc.TrackWalletForUser(ctx, address, derivationPath, "default")
+	return bsc.TrackWalletForUser(ctx, address, derivationPath, 1)
 }
 
 // GetAllTrackedWalletsForUser retrieves all tracked wallet addresses for a specific user
-func (bsc *WalletService) GetAllTrackedWalletsForUser(ctx context.Context, userID string) ([]string, error) {
-	if userID == "" {
-		userID = "default" // Use a default user ID if none is provided
-	}
-
+func (bsc *WalletService) GetAllTrackedWalletsForUser(ctx context.Context, userID int64) ([]string, error) {
 	wallets, err := bsc.repo.GetAllTrackedWalletsForUser(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get tracked wallets for user %s: %w", userID, err)
+		return nil, fmt.Errorf("failed to get tracked wallets for user %d: %w", userID, err)
 	}
 
 	addresses := make([]string, len(wallets))

@@ -7,7 +7,7 @@ import (
 )
 
 type OrderService interface {
-	GetUserOrders(ctx context.Context, userID string) ([]entities.Order, error)
-	CreateOrder(ctx context.Context, userID, amount string, wallet string) error
+	GetUserOrders(ctx context.Context, userID int) ([]entities.Order, error)
+	CreateOrder(ctx context.Context, userID int, amount string, wallet string) error
 	ChangeOrderStatus(ctx context.Context, wallet string, amount *big.Int) error
 }

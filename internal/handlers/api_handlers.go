@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/mocked"
 
@@ -56,7 +57,14 @@ func (h *HTTPHandler) RegisterRoutes(router *mux.Router) {
 }
 
 func (h *HTTPHandler) GetUserOrders(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
+	userIDParam := r.URL.Query().Get("user_id")
+	if userIDParam == "" {
+		http.Error(w, "Missing required parameters: user_id", http.StatusBadRequest)
+		return
+	}
+
+	userID, err := strconv.Atoi(userIDParam)
+
 	orders, err := h.orderService.GetUserOrders(r.Context(), userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -66,16 +74,18 @@ func (h *HTTPHandler) GetUserOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTPHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	amount := r.URL.Query().Get("amount")
+	userIDParam := r.URL.Query().Get("user_id")
+	amountParam := r.URL.Query().Get("amount")
 
 	// Validate required parameters
-	if userID == "" || amount == "" {
+	if userIDParam == "" || amountParam == "" {
 		http.Error(w, "Missing required parameters: user_id and amount", http.StatusBadRequest)
 		return
 	}
 
-	orders, err := h.orderService.GetUserOrders(r.Context(), userID)
+	userID, err := strconv.ParseInt(userIDParam, 10, 64)
+
+	orders, err := h.orderService.GetUserOrders(r.Context(), int(userID))
 	if err != nil {
 		h.logger.Error("Error getting user orders", "error", err, "user_id", userID)
 		http.Error(w, fmt.Sprintf("Failed to retrieve user orders: %v", err), http.StatusInternalServerError)
@@ -88,7 +98,7 @@ func (h *HTTPHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		wallet = orders[0].Wallet
 		h.logger.Info("Reusing existing wallet for user", "user_id", userID, "wallet", wallet)
 	} else {
-		wallet, err = h.walletService.GenerateWallet(r.Context())
+		wallet, err = h.walletService.GenerateWalletForUser(r.Context(), userID)
 		if err != nil {
 			h.logger.Error("Error generating wallet", "error", err)
 			http.Error(w, fmt.Sprintf("Failed to generate wallet: %v", err), http.StatusInternalServerError)
@@ -97,14 +107,14 @@ func (h *HTTPHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		h.logger.Info("Generated new wallet for user", "user_id", userID, "wallet", wallet)
 	}
 
-	err = h.orderService.CreateOrder(r.Context(), userID, amount, wallet)
+	err = h.orderService.CreateOrder(r.Context(), int(userID), amountParam, wallet)
 	if err != nil {
 		h.logger.Error("Error creating order", "error", err, "user_id", userID, "wallet", wallet)
 		http.Error(w, fmt.Sprintf("Failed to create order: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	h.logger.Info("Order created successfully", "user_id", userID, "wallet", wallet, "amount", amount)
+	h.logger.Info("Order created successfully", "user_id", userID, "wallet", wallet, "amount", amountParam)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -181,15 +191,22 @@ func (h *HTTPHandler) GetWalletTransactions(w http.ResponseWriter, r *http.Reque
 
 // GenerateWallet generates a new wallet for a specific user
 func (h *HTTPHandler) GenerateWallet(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
+	userIDStr := r.URL.Query().Get("user_id")
+	if userIDStr == "" {
 		h.logger.Error("Error, user was not provided")
 		http.Error(w, fmt.Sprintf("Failed to generate wallet"), http.StatusBadRequest)
 		return
 	}
 
+	// Parse user ID to int64
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		h.logger.Error("Invalid user ID format", "error", err, "user_id", userIDStr)
+		http.Error(w, "Invalid user ID format", http.StatusBadRequest)
+		return
+	}
+
 	var wallet string
-	var err error
 
 	// Generate wallet for the specific user
 	wallet, err = h.walletService.GenerateWalletForUser(r.Context(), userID)
@@ -212,9 +229,20 @@ func (h *HTTPHandler) GenerateWallet(w http.ResponseWriter, r *http.Request) {
 
 // GetUserWallets returns all wallets for a specific user
 func (h *HTTPHandler) GetUserWallets(w http.ResponseWriter, r *http.Request) {
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = "default" // Use default user ID if none provided
+	userIDStr := r.URL.Query().Get("user_id")
+
+	// Default to user ID 1 if not provided
+	userID := int64(1)
+
+	// If user ID is provided, parse it
+	if userIDStr != "" {
+		var err error
+		userID, err = strconv.ParseInt(userIDStr, 10, 64)
+		if err != nil {
+			h.logger.Error("Invalid user ID format", "error", err, "user_id", userIDStr)
+			http.Error(w, "Invalid user ID format", http.StatusBadRequest)
+			return
+		}
 	}
 
 	wallets, err := h.walletService.GetAllTrackedWalletsForUser(r.Context(), userID)

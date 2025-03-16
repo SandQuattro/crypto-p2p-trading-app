@@ -23,7 +23,7 @@ func NewOrdersRepository(logger *slog.Logger, pg *database.Postgres) *OrdersRepo
 	return &OrdersRepository{logger: logger, db: pg.DBGetter, transactor: pg.Transactor}
 }
 
-func (r *OrdersRepository) FindUserOrders(ctx context.Context, userID string) ([]entities.Order, error) {
+func (r *OrdersRepository) FindUserOrders(ctx context.Context, userID int) ([]entities.Order, error) {
 	rows, err := r.db(ctx).Query(ctx, "SELECT id, user_id, wallet, amount, status FROM orders WHERE user_id = $1", userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -41,7 +41,7 @@ func (r *OrdersRepository) FindUserOrders(ctx context.Context, userID string) ([
 	return orders, nil
 }
 
-func (r *OrdersRepository) InsertOrder(ctx context.Context, userID, amount string, wallet string) error {
+func (r *OrdersRepository) InsertOrder(ctx context.Context, userID int, amount string, wallet string) error {
 	_, err := r.db(ctx).Exec(ctx, "INSERT INTO orders (user_id, wallet, amount, status) VALUES ($1, $2, $3, 'pending')", userID, wallet, amount)
 	return err
 }
