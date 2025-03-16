@@ -174,6 +174,8 @@ Here's a comprehensive guide to test your cryptocurrency order processing system
    ]
    ```
 
+!! Note that transactions are processed every minute by a ticker in the pollAndProcess method of the BinanceSmartChain struct
+
 ### Step 7: Verify Order Status Update
 
 1. **Check the user's orders again**:
@@ -215,7 +217,8 @@ Here's a comprehensive guide to test your cryptocurrency order processing system
    }
    ```
 
-3. **Note** that the system reuses the existing wallet for the same user
+3. **Note** that the system creates new deposit wallet for the same user but new order! This is a good practice in p2p systems!
+It's for better tracking and identification.
 
 4. **Verify the new order**:
 
@@ -419,31 +422,38 @@ The system uses a PostgreSQL database with the following schema:
 
 ```sql
 -- Orders table
-CREATE TABLE orders (
+CREATE TABLE IF NOT EXISTS orders (
     id SERIAL PRIMARY KEY,
-    user_id VARCHAR(255) NOT NULL,
-    wallet VARCHAR(255) NOT NULL,
+    user_id BIGINT NOT NULL,
+    wallet_id BIGINT NOT NULL,
     amount VARCHAR(255) NOT NULL,
-    status VARCHAR(50) NOT NULL DEFAULT 'pending'
-);
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_orders_wallet FOREIGN KEY (wallet_id)
+        REFERENCES wallets(id)
+        ON DELETE CASCADE
 
-CREATE INDEX idx_orders_wallet ON orders(wallet);
-CREATE INDEX idx_orders_user_id ON orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_orders_wallet_id ON orders(wallet_id);
+CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 
 -- Wallets table
-CREATE TABLE wallets (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR(255) NOT NULL,
-    address VARCHAR(255) NOT NULL UNIQUE,
-    derivation_path VARCHAR(255) NOT NULL,
-    wallet_index INTEGER DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+create table if not exists wallets
+(
+    id              bigserial primary key,
+    user_id         bigint       not null,
+    address         varchar(255) not null unique,
+    derivation_path varchar(255) not null,
+    wallet_index    integer                  default 0,
+    created_at      timestamp with time zone default CURRENT_TIMESTAMP,
+    constraint unique_user_wallet_index
+        unique (user_id, wallet_index)
 );
 
-CREATE INDEX idx_wallets_address ON wallets(address);
-CREATE INDEX idx_wallets_user_id ON wallets(user_id);
-CREATE INDEX idx_wallets_index ON wallets(wallet_index);
-ALTER TABLE wallets ADD CONSTRAINT unique_user_wallet_index UNIQUE (user_id, wallet_index);
+create index idx_wallets_address on public.wallets (address);
+create index idx_wallets_index on public.wallets (wallet_index);
+create index idx_wallets_user_id on public.wallets (user_id);
 ```
 
 ### API Endpoints

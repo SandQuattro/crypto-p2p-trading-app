@@ -10,12 +10,6 @@ create table if not exists wallets
         unique (user_id, wallet_index)
 );
 
-create index idx_wallets_address
-    on public.wallets (address);
-
-create index idx_wallets_index
-    on public.wallets (wallet_index);
-
-create index idx_wallets_user_id
-    on public.wallets (user_id);
-
+create index idx_wallets_address on public.wallets (address);
+create index idx_wallets_index on public.wallets (wallet_index);
+create index idx_wallets_user_id on public.wallets (user_id);
