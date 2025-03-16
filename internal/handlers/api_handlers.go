@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"strconv"
 
@@ -43,6 +44,8 @@ func (h *HTTPHandler) RegisterRoutes(router *mux.Router) {
 	// Wallets
 	router.HandleFunc("/generate_wallet", h.GenerateWallet).Methods("POST")
 	router.HandleFunc("/wallets/user", h.GetUserWallets).Methods("GET")
+	router.HandleFunc("/wallets/ids", h.GetWalletDetailsHandler).Methods("GET")
+	router.HandleFunc("/transfer", h.TransferFundsHandler).Methods("POST")
 
 	// Transactions
 	router.HandleFunc("/transactions/wallet", h.GetWalletTransactions).Methods("GET")
@@ -254,4 +257,87 @@ func (h *HTTPHandler) GetUserWallets(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// GetWalletDetailsHandler returns wallet details (ID and address) for a specific user
+func (h *HTTPHandler) GetWalletDetailsHandler(w http.ResponseWriter, r *http.Request) {
+	userIDParam := r.URL.Query().Get("user_id")
+	if userIDParam == "" {
+		http.Error(w, "Missing required parameter: user_id", http.StatusBadRequest)
+		return
+	}
+
+	userID, err := strconv.ParseInt(userIDParam, 10, 64)
+	if err != nil {
+		h.logger.Error("Invalid user ID format", "error", err, "user_id", userIDParam)
+		http.Error(w, "Invalid user ID format", http.StatusBadRequest)
+		return
+	}
+
+	walletDetails, err := h.walletService.GetWalletDetailsForUser(r.Context(), userID)
+	if err != nil {
+		h.logger.Error("Error getting wallet details", "error", err, "user_id", userID)
+		http.Error(w, fmt.Sprintf("Failed to retrieve wallet details: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(walletDetails)
+}
+
+// TransferFundsHandler transfers funds from a wallet to another address
+func (h *HTTPHandler) TransferFundsHandler(w http.ResponseWriter, r *http.Request) {
+	// Get parameters from request
+	fromWalletIDParam := r.URL.Query().Get("wallet_id")
+	toAddress := r.URL.Query().Get("to_address")
+	amountParam := r.URL.Query().Get("amount")
+
+	// Validate required parameters
+	if fromWalletIDParam == "" || toAddress == "" || amountParam == "" {
+		http.Error(w, "Missing required parameters: wallet_id, to_address, or amount", http.StatusBadRequest)
+		return
+	}
+
+	// Parse wallet ID
+	fromWalletID, err := strconv.Atoi(fromWalletIDParam)
+	if err != nil {
+		h.logger.Error("Invalid wallet ID format", "error", err, "wallet_id", fromWalletIDParam)
+		http.Error(w, "Invalid wallet ID format", http.StatusBadRequest)
+		return
+	}
+
+	// Parse amount (convert from USDT to wei - multiply by 10^18)
+	amountFloat, err := strconv.ParseFloat(amountParam, 64)
+	if err != nil {
+		h.logger.Error("Invalid amount format", "error", err, "amount", amountParam)
+		http.Error(w, "Invalid amount format", http.StatusBadRequest)
+		return
+	}
+
+	// Convert to wei (multiply by 10^18)
+	amountWei := new(big.Float).Mul(
+		big.NewFloat(amountFloat),
+		new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)),
+	)
+
+	// Convert to big.Int
+	amountInt := new(big.Int)
+	amountWei.Int(amountInt)
+
+	// Transfer funds
+	txHash, err := h.walletService.TransferFunds(r.Context(), fromWalletID, toAddress, amountInt)
+	if err != nil {
+		h.logger.Error("Error transferring funds", "error", err, "from_wallet", fromWalletID, "to", toAddress, "amount", amountParam)
+		http.Error(w, fmt.Sprintf("Failed to transfer funds: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"tx_hash": txHash,
+		"message": fmt.Sprintf("Successfully initiated transfer of %s USDT from wallet ID %d to %s", amountParam, fromWalletID, toAddress),
+	})
 }

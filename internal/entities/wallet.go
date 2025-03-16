@@ -13,3 +13,9 @@ type Wallet struct {
 	WalletIndex    uint32    `db:"wallet_index"`
 	CreatedAt      time.Time `db:"created_at"`
 }
+
+// WalletDetail represents wallet information with ID and address
+type WalletDetail struct {
+	ID      int64  `json:"id"`
+	Address string `json:"address"`
+}
