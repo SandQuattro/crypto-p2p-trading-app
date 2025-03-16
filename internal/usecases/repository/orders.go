@@ -26,14 +26,13 @@ func NewOrdersRepository(logger *slog.Logger, pg *database.Postgres) *OrdersRepo
 
 func (r *OrdersRepository) FindUserOrders(ctx context.Context, userID int) ([]entities.Order, error) {
 	rows, err := r.db(ctx).Query(ctx, "SELECT id, user_id, wallet_id, amount, status, created_at, updated_at FROM orders WHERE user_id = $1", userID)
-	defer rows.Close()
-
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to query user orders: %w", err)
 	}
+	defer rows.Close()
 
 	orders, err := pgx.CollectRows(rows, pgx.RowToStructByName[entities.Order])
 	if err != nil {
@@ -52,18 +51,17 @@ func (r *OrdersRepository) InsertOrder(ctx context.Context, userID, walletID int
 func (r *OrdersRepository) UpdateOrderStatus(ctx context.Context, walletID int, amount *big.Int) error {
 	// Get all pending orders for this wallet
 	rows, err := r.db(ctx).Query(ctx, "SELECT * FROM orders WHERE wallet_id = $1 AND status = 'pending' ORDER BY id", walletID)
-	defer rows.Close()
-
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("failed to query pending orders by wallet id: %w", err)
 	}
+	defer rows.Close()
 
 	orders, err := pgx.CollectRows(rows, pgx.RowToStructByName[entities.Order])
 	if err != nil {
-		slog.Error("failed to collect orders rows", "error", err)
+		r.logger.Error("failed to collect orders rows", "error", err)
 		return err
 	}
 
@@ -71,7 +69,6 @@ func (r *OrdersRepository) UpdateOrderStatus(ctx context.Context, walletID int, 
 	remainingAmount := new(big.Int).Set(amount)
 
 	for _, order := range orders {
-
 		// Convert order amount to big.Float for decimal handling
 		orderAmountFloat, _, err := new(big.Float).Parse(order.Amount, 10)
 		if err != nil {

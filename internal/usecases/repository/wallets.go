@@ -94,14 +94,13 @@ func (r *WalletsRepository) GetAllTrackedWallets(ctx context.Context) ([]entitie
               ORDER BY id`
 
 	rows, err := r.db(ctx).Query(ctx, query)
-	defer rows.Close()
-
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to query wallets: %w", err)
 	}
+	defer rows.Close()
 
 	wallets, err := pgx.CollectRows(rows, pgx.RowToStructByName[entities.Wallet])
 	if err != nil {
@@ -135,7 +134,7 @@ func (r *WalletsRepository) TrackWalletWithUserAndIndex(ctx context.Context, add
 	}
 
 	if exists {
-		r.logger.Debug("Wallet already tracked", "address", address)
+		r.logger.DebugContext(ctx, "Wallet already tracked", "address", address)
 		return 0, nil
 	}
 
@@ -148,7 +147,7 @@ func (r *WalletsRepository) TrackWalletWithUserAndIndex(ctx context.Context, add
 		return 0, fmt.Errorf("failed to insert wallet: %w", err)
 	}
 
-	r.logger.Info("Wallet added to tracking", "address", address, "user", userID, "index", index)
+	r.logger.InfoContext(ctx, "Wallet added to tracking", "address", address, "user", userID, "index", index)
 	return id, nil
 }
 
@@ -160,18 +159,17 @@ func (r *WalletsRepository) GetAllTrackedWalletsForUser(ctx context.Context, use
               ORDER BY wallet_index`
 
 	rows, err := r.db(ctx).Query(ctx, query, userID)
-	defer rows.Close()
-
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to query wallets by user id: %w", err)
 	}
+	defer rows.Close()
 
 	wallets, err := pgx.CollectRows(rows, pgx.RowToStructByName[entities.Wallet])
 	if err != nil {
-		r.logger.Error("failed to collect wallets rows", "error", err)
+		r.logger.ErrorContext(ctx, "failed to collect wallets rows", "error", err)
 		return nil, fmt.Errorf("failed to collect all tracked user wallets rows, %w", err)
 	}
 

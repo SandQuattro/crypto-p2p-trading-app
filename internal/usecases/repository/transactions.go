@@ -44,18 +44,17 @@ func (r *TransactionsRepository) FindTransactionsByWallet(ctx context.Context, w
                ORDER BY id DESC
 `
 	rows, err := r.db(ctx).Query(ctx, query, walletAddress)
-	defer rows.Close()
-
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transactions by wallet address: %w", err)
 	}
+	defer rows.Close()
 
 	transactions, err := pgx.CollectRows(rows, pgx.RowToStructByName[entities.Transaction])
 	if err != nil {
-		slog.Error("failed to collect transactions rows", "error", err)
+		r.logger.Error("failed to collect transactions rows", "error", err)
 		return nil, err
 	}
 
@@ -106,18 +105,17 @@ func (r *TransactionsRepository) UpdatePendingTransactions(ctx context.Context) 
 	// Get all confirmed but unprocessed transactions
 	rows, err := r.db(ctx).Query(ctx,
 		"SELECT id, tx_hash, wallet_address, amount FROM transactions WHERE confirmed = true AND processed = false")
-	defer rows.Close()
-
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("failed to query confirmed but unprocessed transactions: %w", err)
 	}
+	defer rows.Close()
 
 	transactions, err := pgx.CollectRows(rows, pgx.RowToStructByName[entities.ConfirmedUnprocessedTransaction])
 	if err != nil {
-		slog.Error("failed to collect confirmed unprocessed rows", "error", err)
+		r.logger.Error("failed to collect confirmed unprocessed rows", "error", err)
 		return err
 	}
 
