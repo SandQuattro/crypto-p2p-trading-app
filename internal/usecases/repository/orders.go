@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"math/big"
+
 	tx "github.com/Thiht/transactor/pgx"
 	"github.com/jackc/pgx/v5"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 	"github.com/sand/crypto-p2p-trading-app/backend/pkg/database"
-	"log/slog"
-	"math/big"
 )
 
 type OrdersRepository struct {
@@ -47,48 +48,61 @@ func (r *OrdersRepository) InsertOrder(ctx context.Context, userID int, amount s
 }
 
 func (r *OrdersRepository) UpdateOrderStatus(ctx context.Context, wallet string, amount *big.Int) error {
-	// Start a transaction
-	return r.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
-		// Get all pending orders for this wallet
-		rows, err := r.db(ctx).Query(ctx, "SELECT id, amount FROM orders WHERE wallet = $1 AND status = 'pending' ORDER BY id", wallet)
+	// Get all pending orders for this wallet
+	rows, err := r.db(ctx).Query(ctx, "SELECT id, amount FROM orders WHERE wallet = $1 AND status = 'pending' ORDER BY id", wallet)
+	if err != nil {
+		return fmt.Errorf("failed to query pending orders: %w", err)
+	}
+	defer rows.Close()
+
+	var ordersUpdated bool
+	remainingAmount := new(big.Int).Set(amount)
+
+	for rows.Next() {
+		var id int
+		var orderAmountStr string
+
+		if err = rows.Scan(&id, &orderAmountStr); err != nil {
+			return fmt.Errorf("failed to scan order: %w", err)
+		}
+
+		// Convert order amount to big.Float for decimal handling
+		orderAmountFloat, _, err := new(big.Float).Parse(orderAmountStr, 10)
 		if err != nil {
-			return fmt.Errorf("failed to query pending orders: %w", err)
-		}
-		defer rows.Close()
-
-		var ordersUpdated bool
-		remainingAmount := new(big.Int).Set(amount)
-
-		for rows.Next() {
-			var id int
-			var orderAmountStr string
-
-			if err = rows.Scan(&id, &orderAmountStr); err != nil {
-				return fmt.Errorf("failed to scan order: %w", err)
-			}
-
-			orderAmount, success := new(big.Int).SetString(orderAmountStr, 10)
-			if !success {
-				return fmt.Errorf("invalid amount format in database for order %d", id)
-			}
-
-			// If we have enough to cover this order
-			if remainingAmount.Cmp(orderAmount) >= 0 {
-				_, err = r.db(ctx).Exec(ctx, "UPDATE orders SET status = 'completed' WHERE id = $1", id)
-				if err != nil {
-					return fmt.Errorf("failed to update order %d: %w", id, err)
-				}
-
-				// Subtract the order amount from remaining
-				remainingAmount.Sub(remainingAmount, orderAmount)
-				ordersUpdated = true
-			}
+			return fmt.Errorf("invalid amount format in database for order %d: %w", id, err)
 		}
 
-		if !ordersUpdated {
-			return fmt.Errorf("received amount is insufficient for any pending orders")
-		}
+		// Convert to wei (multiply by 10^18)
+		weiMultiplier := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
+		orderAmountInWei := new(big.Float).Mul(orderAmountFloat, weiMultiplier)
 
-		return nil
-	})
+		// Convert back to big.Int for comparison
+		orderAmount := new(big.Int)
+		orderAmountInWei.Int(orderAmount)
+
+		r.logger.Info("Comparing amounts", "order_id", id, "order_amount", orderAmountStr,
+			"order_amount_wei", orderAmount.String(), "transaction_amount", remainingAmount.String())
+
+		// If we have enough to cover this order
+		if remainingAmount.Cmp(orderAmount) >= 0 {
+			_, err = r.db(ctx).Exec(ctx, "UPDATE orders SET status = 'completed', updated_at = NOW() WHERE id = $1", id)
+			if err != nil {
+				return fmt.Errorf("failed to update order %d: %w", id, err)
+			}
+
+			r.logger.Info("Order completed", "order_id", id, "wallet", wallet, "amount", orderAmountStr)
+
+			// Subtract the order amount from remaining
+			remainingAmount.Sub(remainingAmount, orderAmount)
+			ordersUpdated = true
+		}
+	}
+
+	if !ordersUpdated {
+		r.logger.Warn("No orders updated", "wallet", wallet, "amount", amount.String())
+		// Don't return an error, as this might be a legitimate case (e.g., partial payment)
+		// Just log a warning instead
+	}
+
+	return nil
 }

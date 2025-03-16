@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"math/big"
+
 	tx "github.com/Thiht/transactor/pgx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/jackc/pgx/v5"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 	"github.com/sand/crypto-p2p-trading-app/backend/pkg/database"
-	"log/slog"
-	"math/big"
 )
 
 // TransactionsRepository handles blockchain transaction processing.
@@ -98,49 +99,47 @@ func (r *TransactionsRepository) UpdateTransaction(ctx context.Context, txHash s
 
 // UpdatePendingTransactions processes all confirmed but unprocessed transactions
 func (r *TransactionsRepository) UpdatePendingTransactions(ctx context.Context) error {
-	return r.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
-		// Get all confirmed but unprocessed transactions
-		rows, err := r.db(ctx).Query(ctx,
-			"SELECT id, tx_hash, wallet_address, amount FROM transactions WHERE confirmed = true AND processed = false")
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-
-		transactions, err := pgx.CollectRows(rows, pgx.RowToStructByName[entities.ConfirmedUnprocessedTransaction])
-		if err != nil {
-			slog.Error("failed to collect confirmed unprocessed rows", "error", err)
-			return err
-		}
-
-		processed := 0
-		for _, transaction := range transactions {
-			// Parse amount
-			amount, success := new(big.Int).SetString(transaction.AmountStr, 10)
-			if !success {
-				r.logger.Error("Invalid amount format", "tx_hash", transaction.TxHash, "amount", transaction.AmountStr)
-				continue
-			}
-
-			// Update orders for this wallet
-			if err = r.orders.UpdateOrderStatus(ctx, transaction.WalletAddress, amount); err != nil {
-				r.logger.Error("Failed to update order status", "error", err, "tx_hash", transaction.TxHash)
-				continue
-			}
-
-			// Mark transaction as processed
-			_, err = r.db(ctx).Exec(ctx, "UPDATE transactions SET processed = true, updated_at = NOW() WHERE id = $1", transaction.Id)
-			if err != nil {
-				r.logger.Error("Failed to mark transaction as processed", "error", err, "tx_hash", transaction.TxHash)
-				continue
-			}
-
-			processed++
-			r.logger.Info("Transaction processed", "tx_hash", transaction.TxHash, "wallet", transaction.WalletAddress, "amount", transaction.AmountStr)
-		}
-
+	// Get all confirmed but unprocessed transactions
+	rows, err := r.db(ctx).Query(ctx,
+		"SELECT id, tx_hash, wallet_address, amount FROM transactions WHERE confirmed = true AND processed = false")
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
-	})
+	}
+	if err != nil {
+		return err
+	}
+
+	transactions, err := pgx.CollectRows(rows, pgx.RowToStructByName[entities.ConfirmedUnprocessedTransaction])
+	if err != nil {
+		slog.Error("failed to collect confirmed unprocessed rows", "error", err)
+		return err
+	}
+
+	processed := 0
+	for _, transaction := range transactions {
+		// Parse amount
+		amount, success := new(big.Int).SetString(transaction.Amount, 10)
+		if !success {
+			r.logger.Error("Invalid amount format", "tx_hash", transaction.TxHash, "amount", transaction.Amount)
+			continue
+		}
+
+		// Update orders for this wallet
+		if err = r.orders.UpdateOrderStatus(ctx, transaction.WalletAddress, amount); err != nil {
+			r.logger.Error("Failed to update order status", "error", err, "tx_hash", transaction.TxHash)
+			continue
+		}
+
+		// Mark transaction as processed
+		_, err = r.db(ctx).Exec(ctx, "UPDATE transactions SET processed = true, updated_at = NOW() WHERE id = $1", transaction.Id)
+		if err != nil {
+			r.logger.Error("Failed to mark transaction as processed", "error", err, "tx_hash", transaction.TxHash)
+			continue
+		}
+
+		processed++
+		r.logger.Info("Transaction processed", "tx_hash", transaction.TxHash, "wallet", transaction.WalletAddress, "amount", transaction.Amount)
+	}
+
+	return nil
 }

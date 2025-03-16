@@ -2,12 +2,370 @@
 
 The application includes a complete order processing system for cryptocurrency transactions
 
-Expected user flow:
+## Expected user flow
+
 - User creating order to exchange BEP-20 (BSC Network) USDT for anything, it can be fiat currency, digital product, etc...
 - We're creating unique deposit digital wallet (Secure HD(Hierarchical Deterministic) wallet generation using BIP32/BIP39) for user, if it does not have yet
 - All keys are located in one HD wallet. We can easily backup them using seed phrase
 - We are monitoring blockchain, to see transactions to this wallet and order amount validation
 - When we see transaction to our deposit addresses, we know exactly, who did the transfer
+
+# Step-by-Step Manual to Test the User Flow
+
+Here's a comprehensive guide to test your cryptocurrency order processing system with the enhanced wallet management features:
+
+## Prerequisites
+
+1. Make sure your application is running (either via Docker or manual setup)
+2. Have access to a BSC wallet with some BEP-20 USDT for testing (can use Metamask with BSC Testnet)
+3. Have a tool like Postman or curl for making API requests
+
+## Expected user flow
+
+- User creating order to exchange BEP-20 (BSC Network) USDT for anything, it can be fiat currency, digital product, etc...
+- We're creating unique deposit digital wallet (Secure HD(Hierarchical Deterministic) wallet generation using BIP32/BIP39) for user, if it does not have yet
+- All keys are located in one HD wallet. We can easily backup them using seed phrase
+- We are monitoring blockchain, to see transactions to this wallet and order amount validation
+- When we see transaction to our deposit addresses, we know exactly, who did the transfer
+
+## Testing Flow
+
+### Step 1: Create a User Order
+
+1. **Make a request to create an order**:
+
+   ```bash
+   curl -X POST "http://localhost:8080/create_order?user_id=1&amount=2"
+   ```
+
+2. **Expected response**:
+
+   ```json
+   {
+     "status": "success",
+     "wallet": "0x123abc..." 
+   }
+   ```
+
+3. **Save the wallet address** from the response for later use
+
+### Step 2: Verify Order Creation
+
+1. **Check the user's orders**:
+
+   ```bash
+   curl -X GET "http://localhost:8080/orders/user?user_id=1"
+   ```
+
+2. **Expected response**:
+
+   ```json
+   [
+     {
+       "id": 1,
+       "user_id": 1,
+       "wallet": "0x123abc...",
+       "amount": "2",
+       "status": "pending"
+     }
+   ]
+   ```
+
+3. **Verify** that the order status is "pending" and the wallet address matches the one from Step 1
+
+### Step 3: Generate Additional Wallet (Optional)
+
+1. **Generate another wallet for the same user**:
+
+   ```bash
+   curl -X POST "http://localhost:8080/generate_wallet?user_id=1"
+   ```
+
+2. **Expected response**:
+
+   ```json
+   {
+     "status": "success",
+     "wallet": "0x456def..." 
+   }
+   ```
+
+3. **Note** that this wallet address should be different from the first one
+
+### Step 4: Verify User Wallets
+
+1. **Check all wallets for the user**:
+
+   ```bash
+   curl -X GET "http://localhost:8080/wallets/user?user_id=1"
+   ```
+
+2. **Expected response**:
+
+   ```json
+   [
+     {
+       "address": "0x123abc..."
+     },
+     {
+       "address": "0x456def..."
+     }
+   ]
+   ```
+
+3. **Verify** that both wallet addresses are listed
+
+### Step 5: Send USDT to the Order's Wallet
+
+1. **Using Metamask or another BSC wallet**:
+   - Connect to BSC network (or BSC Testnet for testing)
+   - Add the USDT token contract if not already added
+   - Send the exact amount of USDT (2 in this example) to the wallet address from Step 1
+
+2. Here we have to stop and wait for user to send crypto to generated deposit wallet!
+
+3. **Wait for the transaction** to be confirmed on the blockchain (usually takes a few seconds to minutes)
+
+### Step 6: Monitor Transaction Status
+
+1. **Check the transactions for the wallet**:
+
+   ```bash
+   curl -X GET "http://localhost:8080/transactions/wallet?wallet=0x123abc..."
+   ```
+
+2. **Expected response** (initially):
+
+   ```json
+   [
+     {
+       "id": 1,
+       "tx_hash": "0xabc123...",
+       "wallet": "0x123abc...",
+       "amount": "2",
+       "block_number": 12345678,
+       "confirmed": false,
+       "created_at": "2023-03-15T12:34:56Z"
+     }
+   ]
+   ```
+
+3. **Wait for confirmations** (the system requires 3 confirmations by default)
+
+4. **Check again after a few minutes**:
+
+   ```bash
+   curl -X GET "http://localhost:8080/transactions/wallet?wallet=0x123abc..."
+   ```
+
+5. **Expected response** (after confirmations):
+
+   ```json
+   [
+     {
+       "id": 1,
+       "tx_hash": "0xabc123...",
+       "wallet": "0x123abc...",
+       "amount": "2",
+       "block_number": 12345678,
+       "confirmed": true,
+       "created_at": "2023-03-15T12:34:56Z"
+     }
+   ]
+   ```
+
+### Step 7: Verify Order Status Update
+
+1. **Check the user's orders again**:
+
+   ```bash
+   curl -X GET "http://localhost:8080/orders/user?user_id=1"
+   ```
+
+2. **Expected response**:
+
+   ```json
+   [
+     {
+       "id": 1,
+       "user_id": 1,
+       "wallet": "0x123abc...",
+       "amount": "2",
+       "status": "completed"
+     }
+   ]
+   ```
+
+3. **Verify** that the order status has changed from "pending" to "completed"
+
+### Step 8: Test Multiple Orders with Same Wallet
+
+1. **Create another order for the same user**:
+
+   ```bash
+   curl -X POST "http://localhost:8080/create_order?user_id=1&amount=5.0"
+   ```
+
+2. **Expected response**:
+
+   ```json
+   {
+     "status": "success",
+     "wallet": "0x123abc..." 
+   }
+   ```
+
+3. **Note** that the system reuses the existing wallet for the same user
+
+4. **Verify the new order**:
+
+   ```bash
+   curl -X GET "http://localhost:8080/orders/user?user_id=1"
+   ```
+
+5. **Expected response**:
+
+   ```json
+   [
+     {
+       "id": 1,
+       "user_id": 1,
+       "wallet": "0x123abc...",
+       "amount": "2",
+       "status": "completed"
+     },
+     {
+       "id": 2,
+       "user_id": 1,
+       "wallet": "0x123abc...",
+       "amount": "5.0",
+       "status": "pending"
+     }
+   ]
+   ```
+
+### Step 9: Test Multiple Users
+
+1. **Create an order for a different user**:
+
+   ```bash
+   curl -X POST "http://localhost:8080/create_order?user_id=2&amount=15.0"
+   ```
+
+2. **Expected response**:
+
+   ```json
+   {
+     "status": "success",
+     "wallet": "0x789ghi..." 
+   }
+   ```
+
+3. **Note** that a new wallet is generated for the new user
+
+4. **Verify the new user's order**:
+
+   ```bash
+   curl -X GET "http://localhost:8080/orders/user?user_id=2"
+   ```
+
+5. **Expected response**:
+
+   ```json
+   [
+     {
+       "id": 3,
+       "user_id": "2",
+       "wallet": "0x789ghi...",
+       "amount": "15.0",
+       "status": "pending"
+     }
+   ]
+   ```
+
+## Monitoring and Debugging
+
+### Check Application Logs
+
+If you're running with Docker:
+
+```bash
+make docker-logs
+```
+
+Look for:
+
+- Wallet generation events
+- Blockchain monitoring messages
+- Transaction detection and processing
+- Order status updates
+
+### Check Database State
+
+If you have direct access to the PostgreSQL database:
+
+1. Connect to the database:
+
+   ```bash
+   psql postgres://user:password@localhost:5432/exchange
+   ```
+
+2. Check wallets table:
+
+   ```sql
+   SELECT * FROM wallets;
+   ```
+
+3. Check orders table:
+
+   ```sql
+   SELECT * FROM orders;
+   ```
+
+4. Check transactions table:
+
+   ```sql
+   SELECT * FROM transactions;
+   ```
+
+## Troubleshooting
+
+### Transaction Not Detected
+
+1. Verify the transaction on a BSC block explorer (like BscScan)
+2. Check that you sent to the correct wallet address
+3. Ensure you sent BEP-20 USDT (not another token)
+4. Check application logs for blockchain monitoring messages
+
+### Order Status Not Updating
+
+1. Check if the transaction has enough confirmations
+2. Verify the transaction amount matches the order amount
+3. Check application logs for any errors in transaction processing
+4. Restart the application if necessary to trigger a recheck of pending transactions
+
+### Wallet Generation Issues
+
+1. Check application logs for errors during wallet generation
+2. Verify the wallet seed phrase is correctly configured
+3. Ensure the database is accessible and properly configured
+
+## Advanced Testing
+
+### Test Transaction Confirmation Thresholds
+
+1. Modify the `RequiredConfirmations` constant in the code to a higher value
+2. Restart the application
+3. Create a new order and send USDT
+4. Observe how the system waits for the specified number of confirmations
+
+### Test Wallet Index Sequencing
+
+1. Create multiple orders for the same user, forcing new wallet generation each time
+2. Check the database to verify that wallet indices are sequential
+3. Verify that each user has their own sequence of indices
+
+This step-by-step guide should help thoroughly test cryptocurrency order processing system with the enhanced wallet management features.
 
 ### Features
 

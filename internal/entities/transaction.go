@@ -16,6 +16,8 @@ type Transaction struct {
 }
 
 type ConfirmedUnprocessedTransaction struct {
-	Id                               int
-	TxHash, WalletAddress, AmountStr string
+	Id            int
+	TxHash        string
+	WalletAddress string
+	Amount        string
 }

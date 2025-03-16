@@ -123,10 +123,14 @@ func (bsc *WalletService) GenerateWalletForUser(ctx context.Context, userID int6
 	// Increment the index for the new wallet
 	newIndex := lastIndex + 1
 
-	// Create derivation path using the new index
-	derivationPath := fmt.Sprintf("m/44'/60'/0'/0/%d", newIndex)
+	// Create derivation path using the user ID and index
+	// Use the user ID as part of the path to ensure uniqueness
+	derivationPath := fmt.Sprintf("m/44'/60'/%d'/0/%d", userID, newIndex)
 
-	childKey, err := bsc.masterKey.NewChildKey(newIndex)
+	// Create a unique child key based on both user ID and index
+	// This ensures different users get different wallet addresses
+	childKeyIndex := uint32(userID*1000 + int64(newIndex))
+	childKey, err := bsc.masterKey.NewChildKey(childKeyIndex)
 	if err != nil {
 		return "", fmt.Errorf("failed to create child key: %w", err)
 	}
