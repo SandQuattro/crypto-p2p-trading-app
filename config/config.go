@@ -19,13 +19,6 @@ type (
 		Tracing    `json:"tracing" toml:"tracing"`
 	}
 
-	Blockchain struct {
-		RPCURL                string `json:"rpc_url" toml:"rpc_url" env-default:"https://bsc-dataseed.binance.org/"`
-		WalletSeed            string `json:"wallet_seed" toml:"wallet_seed" env-default:"your secure seed phrase here"`
-		RequiredConfirmations uint64 `json:"required_confirmations" toml:"required_confirmations" env-default:"3"`
-		CompanyWalletAddress  string `json:"company_wallet_address" toml:"company_wallet_address" env-default:"0xYourCompanyWalletAddress"`
-	}
-
 	App struct {
 		Name        string `json:"name"        toml:"name"        env:"APP_NAME"`
 		Environment string `json:"environment" toml:"environment" env:"ENV_NAME" env-default:"dev"`
@@ -33,7 +26,7 @@ type (
 	}
 
 	HTTP struct {
-		Port string `json:"port" toml:"port" env:"HTTP_PORT"`
+		Port string ` json:"port" toml:"port" env:"HTTP_PORT"`
 	}
 
 	DB struct {
@@ -43,12 +36,18 @@ type (
 		HealthCheckPeriod int    `json:"health_check_period" toml:"health_check_period" env:"PG_POOL_HEALTHCHECK" env-default:"1"`
 	}
 
+	Blockchain struct {
+		RPCURL                string `json:"rpc_url" toml:"rpc_url" env:"RPC_URL" env-default:"https://bsc-dataseed.binance.org/"`
+		WalletSeed            string `json:"wallet_seed" toml:"wallet_seed" env:"WALLET_SEED" env-default:"your secure seed phrase here"`
+		RequiredConfirmations uint64 `json:"required_confirmations" toml:"required_confirmations" env:"REQUIRED_CONFIRMATIONS" env-default:"3"`
+	}
+
 	Log struct {
 		Level slog.Level `json:"level" toml:"level" env:"LOG_LEVEL"`
 	}
 
 	Tracing struct {
-		URL string `json:"url" toml:"url" env:"TRACING_URL"`
+		URL string ` json:"url" toml:"url" env:"TRACING_URL"`
 	}
 )
 

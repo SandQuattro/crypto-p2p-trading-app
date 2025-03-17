@@ -10,8 +10,9 @@ services:
     environment:
       - TZ=UTC
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/exchange?sslmode=disable
-      - WALLET_SEED=your_secure_seed_phrase_here
+      - WALLET_SEED=your secure seed phrase here
       - RPC_URL=https://bsc-dataseed.binance.org/
+      - REQUIRED_CONFIRMATIONS=3
     depends_on:
       postgres:
         condition: service_healthy
