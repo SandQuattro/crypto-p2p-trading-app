@@ -79,3 +79,16 @@ export const getWalletTransactions = async (walletAddress) => {
     throw error;
   }
 };
+
+// Get transaction ID for a wallet (returns the most recent confirmed transaction)
+export const getTransactionIdForWallet = async (walletAddress) => {
+  try {
+    const transactions = await getWalletTransactions(walletAddress);
+    // Find the most recent confirmed transaction
+    const confirmedTransaction = transactions.find(tx => tx.confirmed);
+    return confirmedTransaction ? confirmedTransaction.tx_hash : null;
+  } catch (error) {
+    console.error(`Error fetching transaction ID for wallet ${walletAddress}:`, error);
+    return null;
+  }
+};

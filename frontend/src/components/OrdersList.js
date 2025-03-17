@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {getUserOrders, getWalletDetails} from '../services/api';
+import {getTransactionIdForWallet, getUserOrders, getWalletDetails} from '../services/api';
 import '../App.css';
 
 const OrdersList = ({ userId, refreshTrigger }) => {
@@ -7,6 +7,7 @@ const OrdersList = ({ userId, refreshTrigger }) => {
     const [wallets, setWallets] = useState({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [transactionIds, setTransactionIds] = useState({});
 
     useEffect(() => {
         const fetchData = async () => {
@@ -31,6 +32,22 @@ const OrdersList = ({ userId, refreshTrigger }) => {
                             }
                         });
                         setWallets(walletsMap);
+
+                        // Fetch transaction IDs for completed orders
+                        const txIdsMap = {};
+                        const completedOrders = ordersData.filter(order => order.status === 'completed');
+
+                        for (const order of completedOrders) {
+                            const walletAddress = walletsMap[order.wallet_id];
+                            if (walletAddress) {
+                                const txId = await getTransactionIdForWallet(walletAddress);
+                                if (txId) {
+                                    txIdsMap[order.id] = txId;
+                                }
+                            }
+                        }
+
+                        setTransactionIds(txIdsMap);
                     }
                 } catch (error) {
                     console.error('Error getting wallet details:', error);
@@ -71,6 +88,15 @@ const OrdersList = ({ userId, refreshTrigger }) => {
         const seconds = date.getSeconds().toString().padStart(2, '0');
 
         return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
+    };
+
+    const truncateAddress = (address) => {
+        if (!address || address === "Address unavailable") return address;
+
+        // Keep first 6 and last 4 characters, add ellipsis in the middle
+        const start = address.substring(0, 15);
+        const end = address.substring(address.length - 15);
+        return `${start}...${end}`;
     };
 
     const copyToClipboard = (text) => {
@@ -115,6 +141,9 @@ const OrdersList = ({ userId, refreshTrigger }) => {
                                     walletAddress = wallets[order.wallet_id];
                                 }
 
+                                // Get transaction ID for completed orders
+                                const transactionId = order.status === 'completed' ? transactionIds[order.id] : null;
+
                                 return (
                                     <tr key={order.id}>
                                         <td>{order.id}</td>
@@ -124,7 +153,7 @@ const OrdersList = ({ userId, refreshTrigger }) => {
                                                 {walletAddress !== "Address unavailable" ? (
                                                     <>
                                                         <span className="address-text" title={walletAddress}>
-                                                            {walletAddress}
+                                                            {truncateAddress(walletAddress)}
                                                         </span>
                                                         <button
                                                             className="copy-button"
@@ -140,7 +169,11 @@ const OrdersList = ({ userId, refreshTrigger }) => {
                                             </div>
                                         </td>
                                         <td>
-                                            <span className={`status-badge ${getStatusClass(order.status)}`}>
+                                            <span
+                                                className={`status-badge ${getStatusClass(order.status)}`}
+                                                title={order.status === 'completed' && transactionId ?
+                                                    `Transaction ID: ${transactionId}` : ''}
+                                            >
                                                 {order.status}
                                             </span>
                                         </td>
