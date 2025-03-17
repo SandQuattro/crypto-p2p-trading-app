@@ -14,4 +14,5 @@ type WalletService interface {
 	GetAllTrackedWalletsForUser(ctx context.Context, userID int64) ([]string, error)
 	GetWalletDetailsForUser(ctx context.Context, userID int64) ([]entities.WalletDetail, error)
 	TransferFunds(ctx context.Context, fromWalletID int, toAddress string, amount *big.Int) (string, error)
+	EnsureSufficientBNB(ctx context.Context, walletAddress string) error
 }

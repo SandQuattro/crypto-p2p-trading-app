@@ -2,10 +2,11 @@ package config
 
 import (
 	"fmt"
-	"github.com/ilyakaznacheev/cleanenv"
 	"log/slog"
 	"path/filepath"
 	"runtime"
+
+	"github.com/ilyakaznacheev/cleanenv"
 )
 
 type (
@@ -22,6 +23,7 @@ type (
 		RPCURL                string `json:"rpc_url" toml:"rpc_url" env-default:"https://bsc-dataseed.binance.org/"`
 		WalletSeed            string `json:"wallet_seed" toml:"wallet_seed" env-default:"your secure seed phrase here"`
 		RequiredConfirmations uint64 `json:"required_confirmations" toml:"required_confirmations" env-default:"3"`
+		CompanyWalletAddress  string `json:"company_wallet_address" toml:"company_wallet_address" env-default:"0xYourCompanyWalletAddress"`
 	}
 
 	App struct {
@@ -31,7 +33,7 @@ type (
 	}
 
 	HTTP struct {
-		Port string ` json:"port" toml:"port" env:"HTTP_PORT"`
+		Port string `json:"port" toml:"port" env:"HTTP_PORT"`
 	}
 
 	DB struct {
@@ -46,7 +48,7 @@ type (
 	}
 
 	Tracing struct {
-		URL string ` json:"url" toml:"url" env:"TRACING_URL"`
+		URL string `json:"url" toml:"url" env:"TRACING_URL"`
 	}
 )
 
