@@ -211,7 +211,7 @@ func (bsc *WalletService) GetWalletDetailsForUser(ctx context.Context, userID in
 }
 
 // TransferFunds transfers USDT from a deposit wallet to a destination wallet
-func (bsc *WalletService) TransferFunds(ctx context.Context, fromWalletID int, toAddress string, amount *big.Int) (string, error) {
+func (bsc *WalletService) TransferFunds(ctx context.Context, client *ethclient.Client, fromWalletID int, toAddress string, amount *big.Int) (string, error) {
 	if bsc.masterKey == nil {
 		return "", errors.New("master key not initialized")
 	}
@@ -246,13 +246,6 @@ func (bsc *WalletService) TransferFunds(ctx context.Context, fromWalletID int, t
 	if err != nil {
 		return "", err
 	}
-
-	// Connect to blockchain
-	client, err := GetBSCClient(ctx)
-	if err != nil {
-		return "", err
-	}
-	defer client.Close()
 
 	// Get the latest nonce for the sender address
 	nonce, err := client.PendingNonceAt(ctx, fromAddress)
@@ -356,7 +349,7 @@ func CreateMasterKey(seed string) *bip32.Key {
 }
 
 // GetBSCClient connects to one of the BSC RPC endpoints
-func GetBSCClient(ctx context.Context) (*ethclient.Client, error) {
+func GetBSCClient(ctx context.Context, logger *slog.Logger) (*ethclient.Client, error) {
 	// Список RPC эндпоинтов BSC (для резервирования)
 	bscRpcEndpoints := []string{
 		"https://bsc-dataseed.binance.org/",
@@ -372,14 +365,14 @@ func GetBSCClient(ctx context.Context) (*ethclient.Client, error) {
 	var lastErr error
 
 	for _, endpoint := range bscRpcEndpoints {
-		slog.Info("Trying to connect to BSC endpoint", "endpoint", endpoint)
+		logger.Info("Trying to connect to BSC endpoint", "endpoint", endpoint)
 		client, err = ethclient.DialContext(ctx, endpoint)
 		if err == nil {
-			slog.Info("Successfully connected to BSC", "endpoint", endpoint)
+			logger.Info("Successfully connected to BSC", "endpoint", endpoint)
 			return client, nil
 		}
 		lastErr = err
-		slog.Warn("Failed to connect to BSC endpoint", "endpoint", endpoint, "error", err)
+		logger.Warn("Failed to connect to BSC endpoint", "endpoint", endpoint, "error", err)
 	}
 
 	return nil, fmt.Errorf("failed to connect to any BSC endpoint: %w", lastErr)

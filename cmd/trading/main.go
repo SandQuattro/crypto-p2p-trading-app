@@ -92,9 +92,16 @@ func main() {
 
 	bscBlockchainProcessor := workers.NewBinanceSmartChain(logger, config, transactionService, walletService)
 
+	// create gRPC clients
+	bscClient, err := usecases.GetBSCClient(ctx, logger)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer bscClient.Close()
+
 	// Create handlers
 	websocketManager := handlers.NewWebSocketManager(logger)
-	httpHandler := handlers.NewHTTPHandler(logger, dataService, walletService, orderService, transactionService)
+	httpHandler := handlers.NewHTTPHandler(logger, bscClient, dataService, walletService, orderService, transactionService)
 	wsHandler := handlers.NewWebSocketHandler(logger, dataService, websocketManager)
 
 	// Create router

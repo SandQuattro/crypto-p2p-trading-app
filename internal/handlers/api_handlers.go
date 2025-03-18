@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/workers"
 	"log/slog"
 	"math/big"
@@ -25,15 +26,18 @@ type HTTPHandler struct {
 	walletService      workers.WalletService
 	orderService       OrderService
 	transactionService workers.TransactionService
+
+	bscClient *ethclient.Client
 }
 
-func NewHTTPHandler(logger *slog.Logger, dataService *mocked.DataService, walletService workers.WalletService, orderService OrderService, transactionService workers.TransactionService) *HTTPHandler {
+func NewHTTPHandler(logger *slog.Logger, bscClient *ethclient.Client, dataService *mocked.DataService, walletService workers.WalletService, orderService OrderService, transactionService workers.TransactionService) *HTTPHandler {
 	return &HTTPHandler{
 		logger:             logger,
 		dataService:        dataService,
 		walletService:      walletService,
 		orderService:       orderService,
 		transactionService: transactionService,
+		bscClient:          bscClient,
 	}
 }
 
@@ -328,7 +332,7 @@ func (h *HTTPHandler) TransferFundsHandler(w http.ResponseWriter, r *http.Reques
 	amountWei.Int(amountInt)
 
 	// Transfer funds
-	txHash, err := h.walletService.TransferFunds(r.Context(), fromWalletID, toAddress, amountInt)
+	txHash, err := h.walletService.TransferFunds(r.Context(), h.bscClient, fromWalletID, toAddress, amountInt)
 	if err != nil {
 		h.logger.Error("Error transferring funds", "error", err, "from_wallet", fromWalletID, "to", toAddress, "amount", amountParam)
 		http.Error(w, fmt.Sprintf("Failed to transfer funds: %v", err), http.StatusInternalServerError)
