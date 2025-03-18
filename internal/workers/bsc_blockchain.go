@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/sand/crypto-p2p-trading-app/backend/config"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 	"log/slog"
 	"math/big"
 	"time"
+
+	"github.com/sand/crypto-p2p-trading-app/backend/config"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
