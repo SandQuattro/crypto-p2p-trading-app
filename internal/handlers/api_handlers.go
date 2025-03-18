@@ -17,6 +17,8 @@ import (
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases"
 )
 
+var _ OrderService = (*usecases.OrderService)(nil)
+
 type HTTPHandler struct {
 	logger             *slog.Logger
 	dataService        *mocked.DataService
