@@ -53,7 +53,7 @@ const OrdersPage = () => {
             </div>
 
             <Modal isOpen={isModalOpen} onClose={closeModal} title="Create New Order">
-                <OrderForm onOrderCreated={handleOrderCreated} />
+                <OrderForm onOrderCreated={handleOrderCreated} selectedUserId={userId} />
             </Modal>
         </div>
     );

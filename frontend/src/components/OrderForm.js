@@ -2,12 +2,19 @@ import React, {useState} from 'react';
 import {createOrder} from '../services/api';
 import '../App.css';
 
-const OrderForm = ({ onOrderCreated }) => {
-    const [userId, setUserId] = useState('1');
+const OrderForm = ({ onOrderCreated, selectedUserId }) => {
+    const [userId, setUserId] = useState(selectedUserId || '1');
     const [amount, setAmount] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
+
+    // Update userId when selectedUserId prop changes
+    React.useEffect(() => {
+        if (selectedUserId) {
+            setUserId(selectedUserId);
+        }
+    }, [selectedUserId]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -44,6 +51,7 @@ const OrderForm = ({ onOrderCreated }) => {
                         onChange={(e) => setUserId(e.target.value)}
                         required
                         className="form-control"
+                        disabled={!!selectedUserId} // Disable editing if user ID is provided from parent
                     />
                 </div>
                 <div className="form-group">
