@@ -23,7 +23,7 @@ type TransactionService interface {
 	ProcessPendingTransactions(ctx context.Context) error
 }
 
-// WalletService defines the interface for wallet operations
+// WalletService defines the interface for wallet operations.
 type WalletService interface {
 	IsOurWallet(ctx context.Context, address string) (bool, error)
 	GenerateWalletForUser(ctx context.Context, userID int64) (int, string, error)
@@ -37,7 +37,7 @@ const (
 	subscriptionRetryDelay = 10 * time.Second                             // Delay before retrying subscription
 )
 
-// Define the ERC-20 transfer method signature
+// Define the ERC-20 transfer method signature.
 var (
 	transferSig = []byte{0xa9, 0x05, 0x9c, 0xbb} // keccak256("transfer(address,uint256)")[0:4]
 )
@@ -50,7 +50,12 @@ type BinanceSmartChain struct {
 	wallets      WalletService
 }
 
-func NewBinanceSmartChain(logger *slog.Logger, config *config.Config, transactions TransactionService, wallets WalletService) *BinanceSmartChain {
+func NewBinanceSmartChain(
+	logger *slog.Logger,
+	config *config.Config,
+	transactions TransactionService,
+	wallets WalletService,
+) *BinanceSmartChain {
 	return &BinanceSmartChain{
 		logger:       logger,
 		config:       config,
@@ -63,10 +68,11 @@ func NewBinanceSmartChain(logger *slog.Logger, config *config.Config, transactio
 // The service will poll for new blocks and process incoming transactions.
 func (bsc *BinanceSmartChain) SubscribeToTransactions(ctx context.Context, rpcURL string) {
 	for {
-		bsc.logger.Info("Starting blockchain monitoring...", "rpc_url", rpcURL)
+		bsc.logger.InfoContext(ctx, "Starting blockchain monitoring...", "rpc_url", rpcURL)
 
 		if err := bsc.pollAndProcess(ctx, rpcURL); err != nil {
-			bsc.logger.Info("Blockchain monitoring error, retrying...", "delay", subscriptionRetryDelay, "error", err)
+			bsc.logger.InfoContext(ctx, "Blockchain monitoring error, retrying...",
+				"delay", subscriptionRetryDelay, "error", err)
 			select {
 			case <-ctx.Done():
 				return
@@ -103,33 +109,33 @@ func (bsc *BinanceSmartChain) pollAndProcess(ctx context.Context, rpcURL string)
 	}
 
 	lastProcessedBlock = currentBlock
-	bsc.logger.Info("Starting blockchain monitoring from block", "block", currentBlock)
+	bsc.logger.InfoContext(ctx, "Starting blockchain monitoring from block", "block", currentBlock)
 
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("pullAndProcess done with %w", ctx.Err())
 		case <-processTicker.C:
 			if err = bsc.transactions.ProcessPendingTransactions(ctx); err != nil {
-				bsc.logger.Error("Failed to process pending transactions", "error", err)
+				bsc.logger.ErrorContext(ctx, "Failed to process pending transactions", "error", err)
 			}
 		case <-pollTicker.C:
 			// Get latest block number
-			latestBlock, err := client.BlockNumber(ctx)
-			if err != nil {
-				bsc.logger.Error("Failed to get latest block number", "error", err)
+			latestBlock, e := client.BlockNumber(ctx)
+			if e != nil {
+				bsc.logger.ErrorContext(ctx, "Failed to get latest block number", "error", e)
 				continue
 			}
 
 			// Process new blocks
 			if latestBlock > lastProcessedBlock {
-				bsc.logger.Info("New blocks detected", "from", lastProcessedBlock+1, "to", latestBlock)
+				// bsc.logger.InfoContext(ctx,"New blocks detected", "from", lastProcessedBlock+1, "to", latestBlock)
 
 				// Process each new block
 				for blockNum := lastProcessedBlock + 1; blockNum <= latestBlock; blockNum++ {
 					block, err := client.BlockByNumber(ctx, big.NewInt(int64(blockNum)))
 					if err != nil {
-						bsc.logger.Error("Failed to get block", "block", blockNum, "error", err)
+						bsc.logger.ErrorContext(ctx, "Failed to get block", "block", blockNum, "error", err)
 						continue
 					}
 
@@ -146,12 +152,12 @@ func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclien
 	// Get the block
 	block, err := client.BlockByHash(ctx, header.Hash())
 	if err != nil {
-		bsc.logger.Error("Failed to get block", "error", err)
+		bsc.logger.ErrorContext(ctx, "Failed to get block", "error", err)
 		return
 	}
 
 	blockNumber := block.NumberU64()
-	bsc.logger.Info("Processing new block", "number", blockNumber, "hash", block.Hash().Hex())
+	bsc.logger.InfoContext(ctx, "Processing new block", "number", blockNumber, "hash", block.Hash().Hex())
 
 	for i, tx := range block.Transactions() {
 		// Check if this is a transaction to the USDT contract
@@ -175,19 +181,19 @@ func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclien
 					// Get the sender address
 					sender, err := client.TransactionSender(ctx, tx, block.Hash(), uint(i))
 					if err != nil {
-						bsc.logger.Error("Failed to get transaction sender", "error", err)
+						bsc.logger.ErrorContext(ctx, "Failed to get transaction sender", "error", err)
 						continue
 					}
 
 					// Check if the recipient is one of our wallets
 					isOurWallet, err := bsc.wallets.IsOurWallet(ctx, recipientAddr)
 					if err != nil {
-						bsc.logger.Error("Failed to check if wallet is tracked", "error", err)
+						bsc.logger.ErrorContext(ctx, "Failed to check if wallet is tracked", "error", err)
 						continue
 					}
 
 					if isOurWallet {
-						bsc.logger.Info("USDT Transfer to our wallet detected",
+						bsc.logger.InfoContext(ctx, "USDT Transfer to our wallet detected",
 							"tx_hash", tx.Hash().Hex(),
 							"from", sender.Hex(),
 							"to", recipientAddr,
@@ -195,7 +201,7 @@ func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclien
 
 						// Record the transaction
 						if err = bsc.transactions.RecordTransaction(ctx, tx.Hash(), recipientAddr, amount, int64(blockNumber)); err != nil {
-							bsc.logger.Error("Failed to record transaction", "error", err)
+							bsc.logger.ErrorContext(ctx, "Failed to record transaction", "error", err)
 						}
 
 						// Check confirmations after RequiredConfirmations blocks
@@ -207,8 +213,13 @@ func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclien
 	}
 }
 
-// checkConfirmations waits for required confirmations and then confirms the transaction
-func (bsc *BinanceSmartChain) checkConfirmations(ctx context.Context, client *ethclient.Client, txHash common.Hash, blockNumber uint64) {
+// checkConfirmations waits for required confirmations and then confirms the transaction.
+func (bsc *BinanceSmartChain) checkConfirmations(
+	ctx context.Context,
+	client *ethclient.Client,
+	txHash common.Hash,
+	blockNumber uint64,
+) {
 	// Create a ticker to check every 30 seconds
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -221,7 +232,7 @@ func (bsc *BinanceSmartChain) checkConfirmations(ctx context.Context, client *et
 			// Get current block number
 			currentBlock, err := client.BlockNumber(ctx)
 			if err != nil {
-				bsc.logger.Error("Failed to get current block number", "error", err)
+				bsc.logger.ErrorContext(ctx, "Failed to get current block number", "error", err)
 				continue
 			}
 
@@ -229,14 +240,16 @@ func (bsc *BinanceSmartChain) checkConfirmations(ctx context.Context, client *et
 			if currentBlock-blockNumber >= bsc.config.Blockchain.RequiredConfirmations {
 				// Confirm the transaction
 				if err = bsc.transactions.ConfirmTransaction(ctx, txHash.Hex()); err != nil {
-					bsc.logger.Error("Failed to confirm transaction", "error", err, "tx_hash", txHash.Hex())
+					bsc.logger.ErrorContext(ctx, "Failed to confirm transaction", "error", err, "tx_hash", txHash.Hex())
 				} else {
-					bsc.logger.Info("Transaction confirmed", "tx_hash", txHash.Hex(), "confirmations", currentBlock-blockNumber)
+					bsc.logger.InfoContext(ctx, "Transaction confirmed",
+						"tx_hash", txHash.Hex(),
+						"confirmations", currentBlock-blockNumber)
 				}
 				return
 			}
 
-			bsc.logger.Info("Waiting for confirmations",
+			bsc.logger.InfoContext(ctx, "Waiting for confirmations",
 				"tx_hash", txHash.Hex(),
 				"current", currentBlock-blockNumber,
 				"required", bsc.config.Blockchain.RequiredConfirmations)
