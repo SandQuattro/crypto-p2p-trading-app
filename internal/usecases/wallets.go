@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"log"
 	"log/slog"
 	"math/big"
@@ -16,7 +17,6 @@ import (
 	"golang.org/x/exp/maps"
 
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -43,6 +43,9 @@ var _ WalletsRepository = (*repository.WalletsRepository)(nil)
 type WalletService struct {
 	logger *slog.Logger
 
+	erc20ABI, smartContractAddress string
+
+	seed      string
 	masterKey *bip32.Key
 	wallets   map[string]bool // In-memory cache of tracked wallets
 	walletsMu sync.RWMutex    // Mutex for wallets map
@@ -61,7 +64,12 @@ func NewWalletService(
 	walletsRepo *repository.WalletsRepository,
 ) (*WalletService, error) {
 	ws := &WalletService{
-		logger:       logger,
+		logger: logger,
+
+		erc20ABI:             `[{"constant":true,"inputs":[{"name":"_owner","type":"address"}],"name":"balanceOf","outputs":[{"name":"balance","type":"uint256"}],"type":"function"}]`,
+		smartContractAddress: "0x55d398326f99059fF775485246999027B3197955",
+
+		seed:         seed,
 		masterKey:    CreateMasterKey(seed),
 		wallets:      make(map[string]bool),
 		transactions: transactions,
@@ -210,6 +218,45 @@ func (bsc *WalletService) GetWalletDetailsForUser(ctx context.Context, userID in
 	return walletDetails, nil
 }
 
+// GetERC20TokenBalance retrieves the balance of ERC20 token for an address
+func (bsc *WalletService) GetERC20TokenBalance(ctx context.Context, client *ethclient.Client, walletAddress string) (*big.Int, error) {
+	tokenAddr := common.HexToAddress(bsc.smartContractAddress)
+	parsedABI, err := abi.JSON(strings.NewReader(bsc.erc20ABI))
+	if err != nil {
+		return nil, fmt.Errorf("error parsing ABI: %w", err)
+	}
+
+	address := common.HexToAddress(walletAddress)
+
+	// Prepare data for balanceOf call
+	data, err := parsedABI.Pack("balanceOf", address)
+	if err != nil {
+		return nil, fmt.Errorf("error packing data for balanceOf: %w", err)
+	}
+
+	// Call the contract
+	result, err := client.CallContract(ctx, ethereum.CallMsg{
+		To:   &tokenAddr,
+		Data: data,
+	}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error calling token contract: %w", err)
+	}
+
+	// Unpack the result
+	var tokenBalance *big.Int
+	err = parsedABI.UnpackIntoInterface(&tokenBalance, "balanceOf", result)
+	if err != nil {
+		return nil, fmt.Errorf("error unpacking balanceOf result: %w", err)
+	}
+
+	return tokenBalance, nil
+}
+
+func (bsc *WalletService) GetGasPrice(ctx context.Context, client *ethclient.Client) (*big.Int, error) {
+	return client.SuggestGasPrice(ctx)
+}
+
 // TransferFunds transfers USDT from a deposit wallet to a destination wallet
 func (bsc *WalletService) TransferFunds(ctx context.Context, client *ethclient.Client, fromWalletID int, toAddress string, amount *big.Int) (string, error) {
 	if bsc.masterKey == nil {
@@ -313,6 +360,114 @@ func (bsc *WalletService) TransferFunds(ctx context.Context, client *ethclient.C
 		"from", fromAddress.Hex(),
 		"to", toAddress,
 		"amount", amount.String(),
+		"tx_hash", txHash)
+
+	return txHash, nil
+}
+
+func (bsc *WalletService) TransferAllBNB(ctx context.Context, toAddress, depositUserWalletAddress string, userID, index int) (string, error) {
+	masterKey := CreateMasterKey(bsc.seed)
+
+	// Получаем child key
+	childKey, err := GetChildKey(masterKey, int64(userID), int64(index))
+	if err != nil {
+		return "", err
+	}
+
+	// Конвертируем в ECDSA приватный ключ
+	privateKey, fromAddress, err := GetWalletPrivateKey(childKey)
+	if err != nil {
+		return "", err
+	}
+
+	// Проверяем, что адрес соответствует ожидаемому
+	expectedAddress := depositUserWalletAddress
+
+	if !strings.EqualFold(fromAddress.Hex(), expectedAddress) {
+		slog.Warn("Generated address doesn't match expected",
+			"generated", fromAddress.Hex(),
+			"expected", expectedAddress)
+		return "", fmt.Errorf("cannot derive correct private key for wallet %s, generated %s instead",
+			expectedAddress, fromAddress.Hex())
+	}
+
+	slog.Info("Successfully derived private key for wallet", "address", fromAddress.Hex())
+
+	// Подключаемся к блокчейну
+	client, err := GetBSCClient(ctx, slog.Default())
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+
+	// Получаем nonce для адреса депозитного кошелька пользователя
+	nonce, err := client.PendingNonceAt(ctx, fromAddress)
+	if err != nil {
+		return "", fmt.Errorf("failed to get nonce: %w", err)
+	}
+
+	// Получаем текущий баланс
+	balance, err := client.BalanceAt(ctx, fromAddress, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to get balance: %w", err)
+	}
+
+	// Проверяем, что есть что отправлять
+	if balance.Cmp(big.NewInt(0)) <= 0 {
+		return "", fmt.Errorf("balance is zero, nothing to transfer")
+	}
+
+	// Получаем текущую цену газа
+	gasPrice, err := client.SuggestGasPrice(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get gas price: %w", err)
+	}
+
+	// Стандартный лимит газа для перевода BNB
+	gasLimit := uint64(21000)
+
+	// Рассчитываем комиссию за транзакцию
+	fee := new(big.Int).Mul(gasPrice, big.NewInt(int64(gasLimit)))
+
+	// Проверяем, что баланс больше комиссии
+	if balance.Cmp(fee) <= 0 {
+		return "", fmt.Errorf("balance is less than transaction fee: %s < %s",
+			balance.String(), fee.String())
+	}
+
+	// Рассчитываем сумму для отправки (баланс - комиссия)
+	amount := new(big.Int).Sub(balance, fee)
+
+	// Адрес получателя
+	to := common.HexToAddress(toAddress)
+
+	// Создаем транзакцию
+	tx := types.NewTransaction(nonce, to, amount, gasLimit, gasPrice, nil)
+
+	// Получаем ID цепи
+	chainID, err := client.ChainID(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get chain ID: %w", err)
+	}
+
+	// Подписываем транзакцию
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign transaction: %w", err)
+	}
+
+	// Отправляем транзакцию
+	err = client.SendTransaction(ctx, signedTx)
+	if err != nil {
+		return "", fmt.Errorf("failed to send transaction: %w", err)
+	}
+
+	txHash := signedTx.Hash().Hex()
+	slog.Info("BNB transaction sent",
+		"from", fromAddress.Hex(),
+		"to", toAddress,
+		"amount", amount.String(),
+		"fee", fee.String(),
 		"tx_hash", txHash)
 
 	return txHash, nil
@@ -441,41 +596,6 @@ func ParseDerivationPath(derivationPath string) (int64, int64, error) {
 		return 0, 0, fmt.Errorf("failed to parse derivation path: %w", err)
 	}
 	return userID, index, nil
-}
-
-// GetERC20TokenBalance retrieves the balance of ERC20 token for an address
-func GetERC20TokenBalance(ctx context.Context, client *ethclient.Client, contractAddress, walletAddress string, tokenABI string) (*big.Int, error) {
-	tokenAddr := common.HexToAddress(contractAddress)
-	parsedABI, err := abi.JSON(strings.NewReader(tokenABI))
-	if err != nil {
-		return nil, fmt.Errorf("error parsing ABI: %w", err)
-	}
-
-	address := common.HexToAddress(walletAddress)
-
-	// Prepare data for balanceOf call
-	data, err := parsedABI.Pack("balanceOf", address)
-	if err != nil {
-		return nil, fmt.Errorf("error packing data for balanceOf: %w", err)
-	}
-
-	// Call the contract
-	result, err := client.CallContract(ctx, ethereum.CallMsg{
-		To:   &tokenAddr,
-		Data: data,
-	}, nil)
-	if err != nil {
-		return nil, fmt.Errorf("error calling token contract: %w", err)
-	}
-
-	// Unpack the result
-	var tokenBalance *big.Int
-	err = parsedABI.UnpackIntoInterface(&tokenBalance, "balanceOf", result)
-	if err != nil {
-		return nil, fmt.Errorf("error unpacking balanceOf result: %w", err)
-	}
-
-	return tokenBalance, nil
 }
 
 // CreateERC20TransferData creates transaction data for ERC20 token transfer

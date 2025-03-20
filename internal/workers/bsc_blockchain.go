@@ -29,7 +29,10 @@ type WalletService interface {
 	GenerateWalletForUser(ctx context.Context, userID int64) (int, string, error)
 	GetAllTrackedWalletsForUser(ctx context.Context, userID int64) ([]string, error)
 	GetWalletDetailsForUser(ctx context.Context, userID int64) ([]entities.WalletDetail, error)
+	GetERC20TokenBalance(ctx context.Context, client *ethclient.Client, walletAddress string) (*big.Int, error)
+	GetGasPrice(ctx context.Context, client *ethclient.Client) (*big.Int, error)
 	TransferFunds(ctx context.Context, client *ethclient.Client, fromWalletID int, toAddress string, amount *big.Int) (string, error)
+	TransferAllBNB(ctx context.Context, toAddress, depositUserWalletAddress string, userID, index int) (string, error)
 }
 
 const (
