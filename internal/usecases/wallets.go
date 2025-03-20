@@ -5,13 +5,16 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"log"
 	"log/slog"
 	"math/big"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
+
+	"github.com/google/uuid"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/workers"
 
 	"golang.org/x/exp/maps"
@@ -26,6 +29,14 @@ import (
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/repository"
 	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
+)
+
+// Константы для логирования
+const (
+	// Статусы операций
+	StatusSuccess = "success"
+	StatusFailure = "failure"
+	StatusPending = "pending"
 )
 
 type WalletsRepository interface {
@@ -263,48 +274,110 @@ func (bsc *WalletService) TransferFunds(ctx context.Context, client *ethclient.C
 		return "", errors.New("master key not initialized")
 	}
 
+	// Создаем уникальный ID транзакции для отслеживания в логах
+	txID := uuid.New().String()
+	startTime := time.Now()
+
+	// Добавляем информацию о транзакции в контекст логирования
+	logCtx := context.WithValue(ctx, "tx_id", txID)
+	bsc.logger.InfoContext(logCtx, "Starting token transfer",
+		"tx_id", txID,
+		"from_wallet_id", fromWalletID,
+		"to_address", toAddress,
+		"amount", amount.String(),
+		"status", StatusPending)
+
 	// Get wallet details from database
 	wallet, err := bsc.repo.FindWalletByID(ctx, fromWalletID)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to find wallet",
+			"tx_id", txID,
+			"error", err.Error(),
+			"wallet_id", fromWalletID,
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("failed to find wallet with ID %d: %w", fromWalletID, err)
 	}
 
 	if wallet == nil {
+		bsc.logger.ErrorContext(logCtx, "Wallet not found",
+			"tx_id", txID,
+			"wallet_id", fromWalletID,
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("wallet with ID %d not found", fromWalletID)
 	}
 
 	// Parse derivation path to get the child key index
 	derivationPath := wallet.DerivationPath
-	bsc.logger.Info("Using derivation path", "path", derivationPath, "wallet", wallet.Address)
+	bsc.logger.InfoContext(logCtx, "Using derivation path",
+		"tx_id", txID,
+		"path", derivationPath,
+		"wallet", wallet.Address)
 
 	// Extract user ID and index from derivation path
 	userID, index, err := ParseDerivationPath(derivationPath)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to parse derivation path",
+			"tx_id", txID,
+			"error", err.Error(),
+			"path", derivationPath,
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", err
 	}
 
 	// Get child key and private key
 	childKey, err := GetChildKey(bsc.masterKey, userID, index)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to get child key",
+			"tx_id", txID,
+			"error", err.Error(),
+			"user_id", userID,
+			"index", index,
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", err
 	}
 
 	privateKey, fromAddress, err := GetWalletPrivateKey(childKey)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to get wallet private key",
+			"tx_id", txID,
+			"error", err.Error(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", err
 	}
 
 	// Get the latest nonce for the sender address
 	nonce, err := client.PendingNonceAt(ctx, fromAddress)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to get nonce",
+			"tx_id", txID,
+			"error", err.Error(),
+			"address", fromAddress.Hex(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("failed to get nonce: %w", err)
 	}
 
 	// Get gas price
 	gasPrice, err := client.SuggestGasPrice(ctx)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to get gas price",
+			"tx_id", txID,
+			"error", err.Error(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("failed to get gas price: %w", err)
 	}
+
+	// Логируем информацию о газе
+	bsc.logger.InfoContext(logCtx, "Got gas price",
+		"tx_id", txID,
+		"gas_price", gasPrice.String(),
+		"nonce", nonce)
 
 	// Create token transfer data
 	// USDT contract address on BSC
@@ -321,11 +394,23 @@ func (bsc *WalletService) TransferFunds(ctx context.Context, client *ethclient.C
 		Data:  data,
 	})
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to estimate gas",
+			"tx_id", txID,
+			"error", err.Error(),
+			"from", fromAddress.Hex(),
+			"to", toAddress,
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("failed to estimate gas: %w", err)
 	}
 
 	// Add 20% buffer to gas limit
 	gasLimit = gasLimit * 12 / 10
+
+	bsc.logger.InfoContext(logCtx, "Estimated gas limit",
+		"tx_id", txID,
+		"gas_limit", gasLimit,
+		"gas_limit_with_buffer", gasLimit)
 
 	// Create the transaction
 	tx := types.NewTransaction(
@@ -340,43 +425,95 @@ func (bsc *WalletService) TransferFunds(ctx context.Context, client *ethclient.C
 	// Get chain ID
 	chainID, err := client.ChainID(ctx)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to get chain ID",
+			"tx_id", txID,
+			"error", err.Error(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("failed to get chain ID: %w", err)
 	}
 
 	// Sign the transaction
 	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to sign transaction",
+			"tx_id", txID,
+			"error", err.Error(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("failed to sign transaction: %w", err)
 	}
+
+	// Calculate the total cost in gas
+	gasCost := new(big.Int).Mul(gasPrice, big.NewInt(int64(gasLimit)))
 
 	// Send the transaction
 	err = client.SendTransaction(ctx, signedTx)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to send transaction",
+			"tx_id", txID,
+			"error", err.Error(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("failed to send transaction: %w", err)
 	}
 
 	txHash := signedTx.Hash().Hex()
-	bsc.logger.Info("Transaction sent",
+	bsc.logger.InfoContext(logCtx, "Transaction sent successfully",
+		"tx_id", txID,
+		"tx_hash", txHash,
 		"from", fromAddress.Hex(),
 		"to", toAddress,
 		"amount", amount.String(),
-		"tx_hash", txHash)
+		"gas_price", gasPrice.String(),
+		"gas_limit", gasLimit,
+		"gas_cost", gasCost.String(),
+		"chain_id", chainID.String(),
+		"status", StatusSuccess,
+		"duration", time.Since(startTime).String())
 
 	return txHash, nil
 }
 
 func (bsc *WalletService) TransferAllBNB(ctx context.Context, toAddress, depositUserWalletAddress string, userID, index int) (string, error) {
+	// Создаем уникальный ID транзакции для отслеживания в логах
+	txID := uuid.New().String()
+	startTime := time.Now()
+
+	// Добавляем информацию о транзакции в контекст логирования
+	logCtx := context.WithValue(ctx, "tx_id", txID)
+	bsc.logger.InfoContext(logCtx, "Starting BNB transfer",
+		"tx_id", txID,
+		"from_address", depositUserWalletAddress,
+		"to_address", toAddress,
+		"user_id", userID,
+		"index", index,
+		"status", StatusPending,
+		"operation", "transfer_all_bnb")
+
 	masterKey := CreateMasterKey(bsc.seed)
 
 	// Получаем child key
 	childKey, err := GetChildKey(masterKey, int64(userID), int64(index))
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to get child key",
+			"tx_id", txID,
+			"error", err.Error(),
+			"user_id", userID,
+			"index", index,
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", err
 	}
 
 	// Конвертируем в ECDSA приватный ключ
 	privateKey, fromAddress, err := GetWalletPrivateKey(childKey)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to get wallet private key",
+			"tx_id", txID,
+			"error", err.Error(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", err
 	}
 
@@ -384,18 +521,28 @@ func (bsc *WalletService) TransferAllBNB(ctx context.Context, toAddress, deposit
 	expectedAddress := depositUserWalletAddress
 
 	if !strings.EqualFold(fromAddress.Hex(), expectedAddress) {
-		slog.Warn("Generated address doesn't match expected",
+		bsc.logger.WarnContext(logCtx, "Generated address doesn't match expected",
+			"tx_id", txID,
 			"generated", fromAddress.Hex(),
-			"expected", expectedAddress)
+			"expected", expectedAddress,
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("cannot derive correct private key for wallet %s, generated %s instead",
 			expectedAddress, fromAddress.Hex())
 	}
 
-	slog.Info("Successfully derived private key for wallet", "address", fromAddress.Hex())
+	bsc.logger.InfoContext(logCtx, "Successfully derived private key for wallet",
+		"tx_id", txID,
+		"address", fromAddress.Hex())
 
 	// Подключаемся к блокчейну
-	client, err := GetBSCClient(ctx, slog.Default())
+	client, err := GetBSCClient(ctx, bsc.logger)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to connect to blockchain",
+			"tx_id", txID,
+			"error", err.Error(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", err
 	}
 	defer client.Close()
@@ -403,23 +550,51 @@ func (bsc *WalletService) TransferAllBNB(ctx context.Context, toAddress, deposit
 	// Получаем nonce для адреса депозитного кошелька пользователя
 	nonce, err := client.PendingNonceAt(ctx, fromAddress)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to get nonce",
+			"tx_id", txID,
+			"error", err.Error(),
+			"address", fromAddress.Hex(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("failed to get nonce: %w", err)
 	}
 
 	// Получаем текущий баланс
 	balance, err := client.BalanceAt(ctx, fromAddress, nil)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to get balance",
+			"tx_id", txID,
+			"error", err.Error(),
+			"address", fromAddress.Hex(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("failed to get balance: %w", err)
 	}
 
+	// Логируем текущий баланс
+	bsc.logger.InfoContext(logCtx, "Current BNB balance",
+		"tx_id", txID,
+		"balance_wei", balance.String(),
+		"balance_bnb", WeiToEther(balance).Text('f', 18))
+
 	// Проверяем, что есть что отправлять
 	if balance.Cmp(big.NewInt(0)) <= 0 {
+		bsc.logger.WarnContext(logCtx, "Balance is zero, nothing to transfer",
+			"tx_id", txID,
+			"address", fromAddress.Hex(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("balance is zero, nothing to transfer")
 	}
 
 	// Получаем текущую цену газа
 	gasPrice, err := client.SuggestGasPrice(ctx)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to get gas price",
+			"tx_id", txID,
+			"error", err.Error(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("failed to get gas price: %w", err)
 	}
 
@@ -429,14 +604,35 @@ func (bsc *WalletService) TransferAllBNB(ctx context.Context, toAddress, deposit
 	// Рассчитываем комиссию за транзакцию
 	fee := new(big.Int).Mul(gasPrice, big.NewInt(int64(gasLimit)))
 
+	// Логируем информацию о газе
+	bsc.logger.InfoContext(logCtx, "Gas information",
+		"tx_id", txID,
+		"gas_price", gasPrice.String(),
+		"gas_limit", gasLimit,
+		"fee_wei", fee.String(),
+		"fee_bnb", WeiToEther(fee).Text('f', 18))
+
 	// Проверяем, что баланс больше комиссии
 	if balance.Cmp(fee) <= 0 {
+		bsc.logger.WarnContext(logCtx, "Balance is less than transaction fee",
+			"tx_id", txID,
+			"balance_wei", balance.String(),
+			"fee_wei", fee.String(),
+			"balance_bnb", WeiToEther(balance).Text('f', 18),
+			"fee_bnb", WeiToEther(fee).Text('f', 18),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("balance is less than transaction fee: %s < %s",
 			balance.String(), fee.String())
 	}
 
 	// Рассчитываем сумму для отправки (баланс - комиссия)
 	amount := new(big.Int).Sub(balance, fee)
+
+	bsc.logger.InfoContext(logCtx, "Amount to transfer after fee",
+		"tx_id", txID,
+		"amount_wei", amount.String(),
+		"amount_bnb", WeiToEther(amount).Text('f', 18))
 
 	// Адрес получателя
 	to := common.HexToAddress(toAddress)
@@ -447,28 +643,48 @@ func (bsc *WalletService) TransferAllBNB(ctx context.Context, toAddress, deposit
 	// Получаем ID цепи
 	chainID, err := client.ChainID(ctx)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to get chain ID",
+			"tx_id", txID,
+			"error", err.Error(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("failed to get chain ID: %w", err)
 	}
 
 	// Подписываем транзакцию
 	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to sign transaction",
+			"tx_id", txID,
+			"error", err.Error(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("failed to sign transaction: %w", err)
 	}
 
 	// Отправляем транзакцию
 	err = client.SendTransaction(ctx, signedTx)
 	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to send transaction",
+			"tx_id", txID,
+			"error", err.Error(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("failed to send transaction: %w", err)
 	}
 
 	txHash := signedTx.Hash().Hex()
-	slog.Info("BNB transaction sent",
+	bsc.logger.InfoContext(logCtx, "BNB transaction sent successfully",
+		"tx_id", txID,
+		"tx_hash", txHash,
 		"from", fromAddress.Hex(),
 		"to", toAddress,
-		"amount", amount.String(),
-		"fee", fee.String(),
-		"tx_hash", txHash)
+		"amount_wei", amount.String(),
+		"amount_bnb", WeiToEther(amount).Text('f', 18),
+		"fee_wei", fee.String(),
+		"fee_bnb", WeiToEther(fee).Text('f', 18),
+		"status", StatusSuccess,
+		"duration", time.Since(startTime).String())
 
 	return txHash, nil
 }

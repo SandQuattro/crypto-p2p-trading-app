@@ -8,12 +8,51 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/sand/crypto-p2p-trading-app/backend/config"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+)
+
+// LogFields определяет стандартизированные поля для логирования
+type LogFields struct {
+	// Идентификаторы
+	TxID        string `json:"tx_id"`        // Уникальный ID для отслеживания транзакции в системе
+	TxHash      string `json:"tx_hash"`      // Хеш транзакции в блокчейне
+	BlockNumber uint64 `json:"block_number"` // Номер блока
+	BlockHash   string `json:"block_hash"`   // Хеш блока
+
+	// Адреса
+	From     string `json:"from"`     // Адрес отправителя
+	To       string `json:"to"`       // Адрес получателя
+	Contract string `json:"contract"` // Адрес контракта (если применимо)
+
+	// Значения
+	Amount    string `json:"amount"`     // Сумма транзакции
+	AmountWei string `json:"amount_wei"` // Сумма в wei
+	GasUsed   uint64 `json:"gas_used"`   // Использованный газ
+	GasPrice  string `json:"gas_price"`  // Цена газа
+	GasLimit  uint64 `json:"gas_limit"`  // Лимит газа
+	Fee       string `json:"fee"`        // Комиссия за транзакцию
+
+	// Статусы и ошибки
+	Status        string `json:"status"`        // Статус транзакции (pending, confirmed, failed)
+	Error         string `json:"error"`         // Текст ошибки (если есть)
+	Confirmations int64  `json:"confirmations"` // Количество подтверждений
+
+	// Время
+	Timestamp time.Time `json:"timestamp"` // Время операции
+	Duration  string    `json:"duration"`  // Длительность операции
+}
+
+// Стандартизированные статусы транзакций
+const (
+	TxStatusPending   = "pending"
+	TxStatusConfirmed = "confirmed"
+	TxStatusFailed    = "failed"
 )
 
 type TransactionService interface {
@@ -151,20 +190,50 @@ func (bsc *BinanceSmartChain) pollAndProcess(ctx context.Context, rpcURL string)
 	}
 }
 
+// processBlock обрабатывает блок и ищет релевантные транзакции
 func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclient.Client, header *types.Header) {
+	// Начинаем отсчет времени обработки блока
+	startTime := time.Now()
+
 	// Get the block
 	block, err := client.BlockByHash(ctx, header.Hash())
 	if err != nil {
-		bsc.logger.ErrorContext(ctx, "Failed to get block", "error", err)
+		bsc.logger.ErrorContext(ctx, "Failed to get block",
+			"error", err,
+			"block_hash", header.Hash().Hex(),
+			"duration", time.Since(startTime).String())
 		return
 	}
 
 	blockNumber := block.NumberU64()
-	bsc.logger.InfoContext(ctx, "Processing new block", "number", blockNumber, "hash", block.Hash().Hex())
+	blockHash := block.Hash().Hex()
+
+	logFields := LogFields{
+		BlockNumber: blockNumber,
+		BlockHash:   blockHash,
+		Timestamp:   time.Now(),
+	}
+
+	bsc.logger.InfoContext(ctx, "Processing new block",
+		"block_number", blockNumber,
+		"block_hash", blockHash,
+		"tx_count", len(block.Transactions()),
+		"timestamp", time.Now().Format(time.RFC3339))
 
 	for i, tx := range block.Transactions() {
+		txID := uuid.New().String() // Генерируем уникальный ID для отслеживания транзакции
+		txHash := tx.Hash().Hex()
+
+		// Заполняем информацию о транзакции
+		txLogFields := logFields
+		txLogFields.TxID = txID
+		txLogFields.TxHash = txHash
+
 		// Check if this is a transaction to the USDT contract
 		if tx.To() != nil && tx.To().Hex() == USDTContractAddress {
+			txLogFields.Contract = USDTContractAddress
+			txLogFields.To = tx.To().Hex()
+
 			// Get the input data
 			data := tx.Data()
 
@@ -181,48 +250,79 @@ func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclien
 					amountBytes := data[36:68]
 					amount := new(big.Int).SetBytes(amountBytes)
 
+					// Обновляем данные логирования
+					txLogFields.To = recipientAddr
+					txLogFields.Amount = amount.String()
+
 					// Get the sender address
 					sender, err := client.TransactionSender(ctx, tx, block.Hash(), uint(i))
 					if err != nil {
-						bsc.logger.ErrorContext(ctx, "Failed to get transaction sender", "error", err)
+						bsc.logger.ErrorContext(ctx, "Failed to get transaction sender",
+							"error", err,
+							"tx_id", txID,
+							"tx_hash", txHash)
 						continue
 					}
+
+					txLogFields.From = sender.Hex()
 
 					// Check if the recipient is one of our wallets
 					isOurWallet, err := bsc.wallets.IsOurWallet(ctx, recipientAddr)
 					if err != nil {
-						bsc.logger.ErrorContext(ctx, "Failed to check if wallet is tracked", "error", err)
+						bsc.logger.ErrorContext(ctx, "Failed to check if wallet is tracked",
+							"error", err,
+							"tx_id", txID,
+							"tx_hash", txHash,
+							"recipient", recipientAddr)
 						continue
 					}
 
 					if isOurWallet {
 						bsc.logger.InfoContext(ctx, "USDT Transfer to our wallet detected",
-							"tx_hash", tx.Hash().Hex(),
+							"tx_id", txID,
+							"tx_hash", txHash,
 							"from", sender.Hex(),
 							"to", recipientAddr,
-							"amount", amount.String())
+							"amount", amount.String(),
+							"block_number", blockNumber,
+							"status", TxStatusPending)
 
 						// Record the transaction
 						if err = bsc.transactions.RecordTransaction(ctx, tx.Hash(), recipientAddr, amount, int64(blockNumber)); err != nil {
-							bsc.logger.ErrorContext(ctx, "Failed to record transaction", "error", err)
+							bsc.logger.ErrorContext(ctx, "Failed to record transaction",
+								"error", err,
+								"tx_id", txID,
+								"tx_hash", txHash)
 						}
 
 						// Check confirmations after RequiredConfirmations blocks
-						go bsc.checkConfirmations(ctx, client, tx.Hash(), blockNumber)
+						go bsc.checkConfirmations(ctx, client, tx.Hash(), blockNumber, txID)
 					}
 				}
 			}
 		}
 	}
+
+	// Логируем общее время обработки блока
+	bsc.logger.InfoContext(ctx, "Block processing completed",
+		"block_number", blockNumber,
+		"block_hash", blockHash,
+		"duration", time.Since(startTime).String(),
+		"tx_processed", len(block.Transactions()))
 }
 
-// checkConfirmations waits for required confirmations and then confirms the transaction.
+// checkConfirmations ждет требуемого количества подтверждений и затем подтверждает транзакцию.
 func (bsc *BinanceSmartChain) checkConfirmations(
 	ctx context.Context,
 	client *ethclient.Client,
 	txHash common.Hash,
 	blockNumber uint64,
+	txID string, // Добавлен параметр txID для связывания логов
 ) {
+	// Создаём контекст с метками для отслеживания
+	startTime := time.Now()
+	txHashHex := txHash.Hex()
+
 	// Create a ticker to check every 30 seconds
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -230,32 +330,55 @@ func (bsc *BinanceSmartChain) checkConfirmations(
 	for {
 		select {
 		case <-ctx.Done():
+			bsc.logger.InfoContext(ctx, "Confirmation check cancelled",
+				"tx_id", txID,
+				"tx_hash", txHashHex,
+				"reason", ctx.Err().Error(),
+				"duration", time.Since(startTime).String())
 			return
 		case <-ticker.C:
 			// Get current block number
 			currentBlock, err := client.BlockNumber(ctx)
 			if err != nil {
-				bsc.logger.ErrorContext(ctx, "Failed to get current block number", "error", err)
+				bsc.logger.ErrorContext(ctx, "Failed to get current block number",
+					"error", err,
+					"tx_id", txID,
+					"tx_hash", txHashHex)
 				continue
 			}
 
+			// Рассчитываем количество подтверждений
+			confirmations := currentBlock - blockNumber
+
 			// Check if we have enough confirmations
-			if currentBlock-blockNumber >= bsc.config.Blockchain.RequiredConfirmations {
+			if confirmations >= bsc.config.Blockchain.RequiredConfirmations {
 				// Confirm the transaction
-				if err = bsc.transactions.ConfirmTransaction(ctx, txHash.Hex()); err != nil {
-					bsc.logger.ErrorContext(ctx, "Failed to confirm transaction", "error", err, "tx_hash", txHash.Hex())
+				if err = bsc.transactions.ConfirmTransaction(ctx, txHashHex); err != nil {
+					bsc.logger.ErrorContext(ctx, "Failed to confirm transaction",
+						"error", err,
+						"tx_id", txID,
+						"tx_hash", txHashHex,
+						"confirmations", confirmations,
+						"status", TxStatusFailed,
+						"duration", time.Since(startTime).String())
 				} else {
 					bsc.logger.InfoContext(ctx, "Transaction confirmed",
-						"tx_hash", txHash.Hex(),
-						"confirmations", currentBlock-blockNumber)
+						"tx_id", txID,
+						"tx_hash", txHashHex,
+						"confirmations", confirmations,
+						"status", TxStatusConfirmed,
+						"duration", time.Since(startTime).String())
 				}
 				return
 			}
 
 			bsc.logger.InfoContext(ctx, "Waiting for confirmations",
-				"tx_hash", txHash.Hex(),
-				"current", currentBlock-blockNumber,
-				"required", bsc.config.Blockchain.RequiredConfirmations)
+				"tx_id", txID,
+				"tx_hash", txHashHex,
+				"current", confirmations,
+				"required", bsc.config.Blockchain.RequiredConfirmations,
+				"status", TxStatusPending,
+				"elapsed_time", time.Since(startTime).String())
 		}
 	}
 }
