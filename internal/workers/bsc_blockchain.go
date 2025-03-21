@@ -91,8 +91,11 @@ type WalletService interface {
 	GetWalletDetailsForUser(ctx context.Context, userID int64) ([]entities.WalletDetail, error)
 	GetERC20TokenBalance(ctx context.Context, client *ethclient.Client, walletAddress string) (*big.Int, error)
 	GetGasPrice(ctx context.Context, client *ethclient.Client) (*big.Int, error)
+	GetGasPriceWithPriority(ctx context.Context, client *ethclient.Client, priority string) (*big.Int, error)
 	TransferFunds(ctx context.Context, client *ethclient.Client, fromWalletID int, toAddress string, amount *big.Int) (string, error)
+	TransferFundsWithPriority(ctx context.Context, client *ethclient.Client, fromWalletID int, toAddress string, amount *big.Int, priority string) (string, error)
 	TransferAllBNB(ctx context.Context, toAddress, depositUserWalletAddress string, userID, index int) (string, error)
+	TransferAllBNBWithPriority(ctx context.Context, toAddress, depositUserWalletAddress string, userID, index int, priority string) (string, error)
 }
 
 const (

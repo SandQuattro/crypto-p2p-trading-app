@@ -37,7 +37,37 @@ const (
 	StatusSuccess = "success"
 	StatusFailure = "failure"
 	StatusPending = "pending"
+
+	// Приоритеты транзакций
+	PriorityLow    = "low"
+	PriorityMedium = "medium"
+	PriorityHigh   = "high"
+
+	// Множители для определения gas price в зависимости от приоритета
+	// Medium - базовый приоритет (x1.0)
+	GasPriceMultiplierLow    = 0.8 // 80% от рекомендуемой цены
+	GasPriceMultiplierMedium = 1.0 // 100% от рекомендуемой цены
+	GasPriceMultiplierHigh   = 1.3 // 130% от рекомендуемой цены
+
+	// Параметры для ускорения транзакций
+	SpeedupGasMultiplier = 1.2              // Множитель для цены газа при ускорении
+	MaxPendingTxTime     = 5 * time.Minute  // Максимальное время ожидания транзакции
+	SpeedupCheckInterval = 30 * time.Second // Интервал проверки зависших транзакций
 )
+
+// Структура для хранения данных о транзакциях для отслеживания
+type PendingTransaction struct {
+	TxHash      string
+	FromAddress common.Address
+	ToAddress   common.Address
+	Nonce       uint64
+	Amount      *big.Int
+	GasPrice    *big.Int
+	GasLimit    uint64
+	PrivateKey  *ecdsa.PrivateKey
+	Data        []byte
+	CreatedAt   time.Time
+}
 
 type WalletsRepository interface {
 	FindWalletByAddress(ctx context.Context, address string) (*entities.Wallet, error)
@@ -65,6 +95,11 @@ type WalletService struct {
 
 	transactions *TransactionServiceImpl
 
+	// Отслеживание и ускорение транзакций
+	pendingTxs       map[string]*PendingTransaction       // Карта ожидающих транзакций (ключ - хеш транзакции)
+	pendingTxsByAddr map[common.Address]map[uint64]string // Карта адрес -> нонс -> хеш транзакции
+	pendingTxsMu     sync.RWMutex                         // Мьютекс для защиты карты транзакций
+
 	mu sync.Mutex
 }
 
@@ -85,12 +120,19 @@ func NewWalletService(
 		wallets:      make(map[string]bool),
 		transactions: transactions,
 		repo:         walletsRepo,
+
+		// Инициализация карт для отслеживания транзакций
+		pendingTxs:       make(map[string]*PendingTransaction),
+		pendingTxsByAddr: make(map[common.Address]map[uint64]string),
 	}
 
 	// Load tracked wallets from database into memory cache
 	if err := ws.loadWalletsFromDB(context.Background()); err != nil {
 		logger.Error("Failed to load wallets from database", "error", err)
 	}
+
+	// Запуск горутины для отслеживания и ускорения зависших транзакций
+	go ws.monitorPendingTransactions(context.Background())
 
 	return ws, nil
 }
@@ -264,12 +306,163 @@ func (bsc *WalletService) GetERC20TokenBalance(ctx context.Context, client *ethc
 	return tokenBalance, nil
 }
 
+// GetGasPriceWithPriority возвращает цену газа с учетом приоритета транзакции
+func (bsc *WalletService) GetGasPriceWithPriority(ctx context.Context, client *ethclient.Client, priority string) (*big.Int, error) {
+	// Получаем базовую цену газа
+	baseGasPrice, err := client.SuggestGasPrice(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get suggested gas price: %w", err)
+	}
+
+	// Применяем множитель в зависимости от приоритета
+	var multiplier float64
+	switch priority {
+	case PriorityLow:
+		multiplier = GasPriceMultiplierLow
+	case PriorityHigh:
+		multiplier = GasPriceMultiplierHigh
+	default: // Medium priority by default
+		multiplier = GasPriceMultiplierMedium
+	}
+
+	// Рассчитываем adjusted gas price
+	// Конвертируем big.Int в float64 для умножения
+	baseGasPriceFloat := new(big.Float).SetInt(baseGasPrice)
+	adjustedGasPriceFloat := new(big.Float).Mul(baseGasPriceFloat, big.NewFloat(multiplier))
+
+	// Конвертируем обратно в big.Int
+	adjustedGasPrice := new(big.Int)
+	adjustedGasPriceFloat.Int(adjustedGasPrice)
+
+	return adjustedGasPrice, nil
+}
+
+// GetGasPrice returns the suggested gas price (backward compatibility with default medium priority)
 func (bsc *WalletService) GetGasPrice(ctx context.Context, client *ethclient.Client) (*big.Int, error) {
-	return client.SuggestGasPrice(ctx)
+	return bsc.GetGasPriceWithPriority(ctx, client, PriorityMedium)
+}
+
+// sendTransaction выполняет общие шаги для отправки транзакции и ее отслеживания
+func (bsc *WalletService) sendTransaction(
+	ctx context.Context,
+	client *ethclient.Client,
+	privateKey *ecdsa.PrivateKey,
+	fromAddress common.Address,
+	toAddress common.Address,
+	value *big.Int,
+	gasLimit uint64,
+	gasPrice *big.Int,
+	data []byte,
+	priority string,
+) (string, error) {
+	txID := uuid.New().String()
+	startTime := time.Now()
+	logCtx := context.WithValue(ctx, "tx_id", txID)
+
+	// Получаем nonce для отправителя
+	nonce, err := client.PendingNonceAt(ctx, fromAddress)
+	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to get nonce",
+			"tx_id", txID,
+			"error", err.Error(),
+			"address", fromAddress.Hex(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
+		return "", fmt.Errorf("failed to get nonce: %w", err)
+	}
+
+	// Если цена газа не указана явно, получаем ее с учетом приоритета
+	if gasPrice == nil {
+		gasPrice, err = bsc.GetGasPriceWithPriority(ctx, client, priority)
+		if err != nil {
+			bsc.logger.ErrorContext(logCtx, "Failed to get gas price",
+				"tx_id", txID,
+				"error", err.Error(),
+				"priority", priority,
+				"status", StatusFailure,
+				"duration", time.Since(startTime).String())
+			return "", fmt.Errorf("failed to get gas price with priority %s: %w", priority, err)
+		}
+	}
+
+	// Логируем информацию о газе
+	bsc.logger.InfoContext(logCtx, "Transaction parameters",
+		"tx_id", txID,
+		"from", fromAddress.Hex(),
+		"to", toAddress.Hex(),
+		"value", value.String(),
+		"gas_price", gasPrice.String(),
+		"gas_limit", gasLimit,
+		"nonce", nonce,
+		"priority", priority)
+
+	// Создаем транзакцию
+	tx := types.NewTransaction(nonce, toAddress, value, gasLimit, gasPrice, data)
+
+	// Получаем ID цепи
+	chainID, err := client.ChainID(ctx)
+	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to get chain ID",
+			"tx_id", txID,
+			"error", err.Error(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
+		return "", fmt.Errorf("failed to get chain ID: %w", err)
+	}
+
+	// Подписываем транзакцию
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
+	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to sign transaction",
+			"tx_id", txID,
+			"error", err.Error(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
+		return "", fmt.Errorf("failed to sign transaction: %w", err)
+	}
+
+	// Рассчитываем общую стоимость газа
+	gasCost := new(big.Int).Mul(gasPrice, big.NewInt(int64(gasLimit)))
+
+	// Отправляем транзакцию
+	err = client.SendTransaction(ctx, signedTx)
+	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to send transaction",
+			"tx_id", txID,
+			"error", err.Error(),
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
+		return "", fmt.Errorf("failed to send transaction: %w", err)
+	}
+
+	txHash := signedTx.Hash().Hex()
+
+	// Добавляем транзакцию для отслеживания и возможного ускорения
+	bsc.trackTransaction(txHash, fromAddress, toAddress, nonce, value, gasPrice, gasLimit, privateKey, data)
+
+	bsc.logger.InfoContext(logCtx, "Transaction sent successfully",
+		"tx_id", txID,
+		"tx_hash", txHash,
+		"from", fromAddress.Hex(),
+		"to", toAddress.Hex(),
+		"value", value.String(),
+		"gas_price", gasPrice.String(),
+		"gas_limit", gasLimit,
+		"gas_cost", gasCost.String(),
+		"chain_id", chainID.String(),
+		"status", StatusSuccess,
+		"duration", time.Since(startTime).String())
+
+	return txHash, nil
 }
 
 // TransferFunds transfers USDT from a deposit wallet to a destination wallet
 func (bsc *WalletService) TransferFunds(ctx context.Context, client *ethclient.Client, fromWalletID int, toAddress string, amount *big.Int) (string, error) {
+	return bsc.TransferFundsWithPriority(ctx, client, fromWalletID, toAddress, amount, PriorityMedium)
+}
+
+// TransferFundsWithPriority transfers USDT with specified priority level
+func (bsc *WalletService) TransferFundsWithPriority(ctx context.Context, client *ethclient.Client, fromWalletID int, toAddress string, amount *big.Int, priority string) (string, error) {
 	if bsc.masterKey == nil {
 		return "", errors.New("master key not initialized")
 	}
@@ -285,6 +478,7 @@ func (bsc *WalletService) TransferFunds(ctx context.Context, client *ethclient.C
 		"from_wallet_id", fromWalletID,
 		"to_address", toAddress,
 		"amount", amount.String(),
+		"priority", priority,
 		"status", StatusPending)
 
 	// Get wallet details from database
@@ -350,35 +544,6 @@ func (bsc *WalletService) TransferFunds(ctx context.Context, client *ethclient.C
 		return "", err
 	}
 
-	// Get the latest nonce for the sender address
-	nonce, err := client.PendingNonceAt(ctx, fromAddress)
-	if err != nil {
-		bsc.logger.ErrorContext(logCtx, "Failed to get nonce",
-			"tx_id", txID,
-			"error", err.Error(),
-			"address", fromAddress.Hex(),
-			"status", StatusFailure,
-			"duration", time.Since(startTime).String())
-		return "", fmt.Errorf("failed to get nonce: %w", err)
-	}
-
-	// Get gas price
-	gasPrice, err := client.SuggestGasPrice(ctx)
-	if err != nil {
-		bsc.logger.ErrorContext(logCtx, "Failed to get gas price",
-			"tx_id", txID,
-			"error", err.Error(),
-			"status", StatusFailure,
-			"duration", time.Since(startTime).String())
-		return "", fmt.Errorf("failed to get gas price: %w", err)
-	}
-
-	// Логируем информацию о газе
-	bsc.logger.InfoContext(logCtx, "Got gas price",
-		"tx_id", txID,
-		"gas_price", gasPrice.String(),
-		"nonce", nonce)
-
 	// Create token transfer data
 	// USDT contract address on BSC
 	tokenAddress := common.HexToAddress(workers.USDTContractAddress)
@@ -412,63 +577,30 @@ func (bsc *WalletService) TransferFunds(ctx context.Context, client *ethclient.C
 		"gas_limit", gasLimit,
 		"gas_limit_with_buffer", gasLimit)
 
-	// Create the transaction
-	tx := types.NewTransaction(
-		nonce,
-		tokenAddress,
-		big.NewInt(0), // We're not sending ETH, just tokens
-		gasLimit,
-		gasPrice,
-		data,
-	)
-
-	// Get chain ID
-	chainID, err := client.ChainID(ctx)
+	// Получаем цену газа с учетом приоритета
+	gasPrice, err := bsc.GetGasPriceWithPriority(ctx, client, priority)
 	if err != nil {
-		bsc.logger.ErrorContext(logCtx, "Failed to get chain ID",
+		bsc.logger.ErrorContext(logCtx, "Failed to get gas price with priority",
 			"tx_id", txID,
 			"error", err.Error(),
+			"priority", priority,
 			"status", StatusFailure,
 			"duration", time.Since(startTime).String())
-		return "", fmt.Errorf("failed to get chain ID: %w", err)
+		return "", fmt.Errorf("failed to get gas price: %w", err)
 	}
-
-	// Sign the transaction
-	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
-	if err != nil {
-		bsc.logger.ErrorContext(logCtx, "Failed to sign transaction",
-			"tx_id", txID,
-			"error", err.Error(),
-			"status", StatusFailure,
-			"duration", time.Since(startTime).String())
-		return "", fmt.Errorf("failed to sign transaction: %w", err)
-	}
-
-	// Calculate the total cost in gas
-	gasCost := new(big.Int).Mul(gasPrice, big.NewInt(int64(gasLimit)))
 
 	// Send the transaction
-	err = client.SendTransaction(ctx, signedTx)
+	txHash, err := bsc.sendTransaction(ctx, client, privateKey, fromAddress, tokenAddress, big.NewInt(0), gasLimit, gasPrice, data, priority)
 	if err != nil {
-		bsc.logger.ErrorContext(logCtx, "Failed to send transaction",
-			"tx_id", txID,
-			"error", err.Error(),
-			"status", StatusFailure,
-			"duration", time.Since(startTime).String())
-		return "", fmt.Errorf("failed to send transaction: %w", err)
+		return "", err
 	}
 
-	txHash := signedTx.Hash().Hex()
-	bsc.logger.InfoContext(logCtx, "Transaction sent successfully",
+	// Дополняем лог информацией о сумме токенов
+	bsc.logger.InfoContext(logCtx, "Token transfer complete",
 		"tx_id", txID,
 		"tx_hash", txHash,
-		"from", fromAddress.Hex(),
-		"to", toAddress,
-		"amount", amount.String(),
-		"gas_price", gasPrice.String(),
-		"gas_limit", gasLimit,
-		"gas_cost", gasCost.String(),
-		"chain_id", chainID.String(),
+		"token_amount", amount.String(),
+		"token_address", workers.USDTContractAddress,
 		"status", StatusSuccess,
 		"duration", time.Since(startTime).String())
 
@@ -476,6 +608,10 @@ func (bsc *WalletService) TransferFunds(ctx context.Context, client *ethclient.C
 }
 
 func (bsc *WalletService) TransferAllBNB(ctx context.Context, toAddress, depositUserWalletAddress string, userID, index int) (string, error) {
+	return bsc.TransferAllBNBWithPriority(ctx, toAddress, depositUserWalletAddress, userID, index, PriorityMedium)
+}
+
+func (bsc *WalletService) TransferAllBNBWithPriority(ctx context.Context, toAddress, depositUserWalletAddress string, userID, index int, priority string) (string, error) {
 	// Создаем уникальный ID транзакции для отслеживания в логах
 	txID := uuid.New().String()
 	startTime := time.Now()
@@ -488,6 +624,7 @@ func (bsc *WalletService) TransferAllBNB(ctx context.Context, toAddress, deposit
 		"to_address", toAddress,
 		"user_id", userID,
 		"index", index,
+		"priority", priority,
 		"status", StatusPending,
 		"operation", "transfer_all_bnb")
 
@@ -547,18 +684,6 @@ func (bsc *WalletService) TransferAllBNB(ctx context.Context, toAddress, deposit
 	}
 	defer client.Close()
 
-	// Получаем nonce для адреса депозитного кошелька пользователя
-	nonce, err := client.PendingNonceAt(ctx, fromAddress)
-	if err != nil {
-		bsc.logger.ErrorContext(logCtx, "Failed to get nonce",
-			"tx_id", txID,
-			"error", err.Error(),
-			"address", fromAddress.Hex(),
-			"status", StatusFailure,
-			"duration", time.Since(startTime).String())
-		return "", fmt.Errorf("failed to get nonce: %w", err)
-	}
-
 	// Получаем текущий баланс
 	balance, err := client.BalanceAt(ctx, fromAddress, nil)
 	if err != nil {
@@ -587,12 +712,13 @@ func (bsc *WalletService) TransferAllBNB(ctx context.Context, toAddress, deposit
 		return "", fmt.Errorf("balance is zero, nothing to transfer")
 	}
 
-	// Получаем текущую цену газа
-	gasPrice, err := client.SuggestGasPrice(ctx)
+	// Получаем цену газа с учетом приоритета
+	gasPrice, err := bsc.GetGasPriceWithPriority(ctx, client, priority)
 	if err != nil {
-		bsc.logger.ErrorContext(logCtx, "Failed to get gas price",
+		bsc.logger.ErrorContext(logCtx, "Failed to get gas price with priority",
 			"tx_id", txID,
 			"error", err.Error(),
+			"priority", priority,
 			"status", StatusFailure,
 			"duration", time.Since(startTime).String())
 		return "", fmt.Errorf("failed to get gas price: %w", err)
@@ -637,48 +763,16 @@ func (bsc *WalletService) TransferAllBNB(ctx context.Context, toAddress, deposit
 	// Адрес получателя
 	to := common.HexToAddress(toAddress)
 
-	// Создаем транзакцию
-	tx := types.NewTransaction(nonce, to, amount, gasLimit, gasPrice, nil)
-
-	// Получаем ID цепи
-	chainID, err := client.ChainID(ctx)
+	// Отправляем транзакцию, используя общую логику
+	txHash, err := bsc.sendTransaction(ctx, client, privateKey, fromAddress, to, amount, gasLimit, gasPrice, nil, priority)
 	if err != nil {
-		bsc.logger.ErrorContext(logCtx, "Failed to get chain ID",
-			"tx_id", txID,
-			"error", err.Error(),
-			"status", StatusFailure,
-			"duration", time.Since(startTime).String())
-		return "", fmt.Errorf("failed to get chain ID: %w", err)
+		return "", err
 	}
 
-	// Подписываем транзакцию
-	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
-	if err != nil {
-		bsc.logger.ErrorContext(logCtx, "Failed to sign transaction",
-			"tx_id", txID,
-			"error", err.Error(),
-			"status", StatusFailure,
-			"duration", time.Since(startTime).String())
-		return "", fmt.Errorf("failed to sign transaction: %w", err)
-	}
-
-	// Отправляем транзакцию
-	err = client.SendTransaction(ctx, signedTx)
-	if err != nil {
-		bsc.logger.ErrorContext(logCtx, "Failed to send transaction",
-			"tx_id", txID,
-			"error", err.Error(),
-			"status", StatusFailure,
-			"duration", time.Since(startTime).String())
-		return "", fmt.Errorf("failed to send transaction: %w", err)
-	}
-
-	txHash := signedTx.Hash().Hex()
-	bsc.logger.InfoContext(logCtx, "BNB transaction sent successfully",
+	// Дополняем лог информацией об отправке BNB
+	bsc.logger.InfoContext(logCtx, "BNB transfer complete",
 		"tx_id", txID,
 		"tx_hash", txHash,
-		"from", fromAddress.Hex(),
-		"to", toAddress,
 		"amount_wei", amount.String(),
 		"amount_bnb", WeiToEther(amount).Text('f', 18),
 		"fee_wei", fee.String(),
@@ -834,4 +928,191 @@ func CreateERC20TransferData(toAddress string, amount *big.Int) []byte {
 	data = append(data, paddedAmount...)
 
 	return data
+}
+
+// monitorPendingTransactions запускает периодическую проверку зависших транзакций
+func (bsc *WalletService) monitorPendingTransactions(ctx context.Context) {
+	ticker := time.NewTicker(SpeedupCheckInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			bsc.logger.Info("Stopping transaction monitoring due to context cancellation")
+			return
+		case <-ticker.C:
+			bsc.checkAndSpeedupPendingTransactions(ctx)
+		}
+	}
+}
+
+// checkAndSpeedupPendingTransactions проверяет все ожидающие транзакции и ускоряет зависшие
+func (bsc *WalletService) checkAndSpeedupPendingTransactions(ctx context.Context) {
+	// Получаем клиент BSC
+	client, err := GetBSCClient(ctx, bsc.logger)
+	if err != nil {
+		bsc.logger.Error("Failed to get BSC client for transaction monitoring", "error", err)
+		return
+	}
+	defer client.Close()
+
+	// Копируем карту ожидающих транзакций для безопасной итерации
+	bsc.pendingTxsMu.RLock()
+	pendingTxsCopy := make(map[string]*PendingTransaction)
+	for txHash, tx := range bsc.pendingTxs {
+		pendingTxsCopy[txHash] = tx
+	}
+	bsc.pendingTxsMu.RUnlock()
+
+	now := time.Now()
+	for txHash, pendingTx := range pendingTxsCopy {
+		// Проверяем, не прошло ли слишком много времени с момента отправки
+		if now.Sub(pendingTx.CreatedAt) > MaxPendingTxTime {
+			// Проверяем статус транзакции
+			_, isPending, err := client.TransactionByHash(ctx, common.HexToHash(txHash))
+			if err != nil {
+				bsc.logger.Warn("Failed to check transaction status", "tx_hash", txHash, "error", err)
+				continue
+			}
+
+			// Если транзакция все еще в ожидании, ускоряем ее
+			if isPending {
+				if err := bsc.speedupTransaction(ctx, client, pendingTx); err != nil {
+					bsc.logger.Error("Failed to speed up transaction", "tx_hash", txHash, "error", err)
+				}
+			} else {
+				// Транзакция больше не в ожидании, удаляем из отслеживания
+				bsc.removePendingTransaction(pendingTx.TxHash, pendingTx.FromAddress, pendingTx.Nonce)
+			}
+		}
+	}
+}
+
+// speedupTransaction ускоряет зависшую транзакцию, отправляя новую с тем же нонсом и увеличенной ценой газа
+func (bsc *WalletService) speedupTransaction(ctx context.Context, client *ethclient.Client, pendingTx *PendingTransaction) error {
+	// Создаем логический контекст для отслеживания
+	txID := uuid.New().String()
+	startTime := time.Now()
+	logCtx := context.WithValue(ctx, "tx_id", txID)
+
+	bsc.logger.InfoContext(logCtx, "Speeding up stuck transaction",
+		"tx_id", txID,
+		"original_tx_hash", pendingTx.TxHash,
+		"from", pendingTx.FromAddress.Hex(),
+		"to", pendingTx.ToAddress.Hex(),
+		"nonce", pendingTx.Nonce,
+		"original_gas_price", pendingTx.GasPrice.String(),
+		"status", StatusPending)
+
+	// Увеличиваем цену газа
+	newGasPrice := new(big.Int).Mul(pendingTx.GasPrice, big.NewInt(int64(SpeedupGasMultiplier*100)/100))
+
+	// Создаем новую транзакцию с тем же нонсом, но с увеличенной ценой газа
+	tx := types.NewTransaction(
+		pendingTx.Nonce,
+		pendingTx.ToAddress,
+		pendingTx.Amount,
+		pendingTx.GasLimit,
+		newGasPrice,
+		pendingTx.Data,
+	)
+
+	// Получаем ID сети
+	chainID, err := client.ChainID(ctx)
+	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to get chain ID for speedup",
+			"tx_id", txID, "error", err, "status", StatusFailure)
+		return fmt.Errorf("failed to get chain ID: %w", err)
+	}
+
+	// Подписываем транзакцию
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), pendingTx.PrivateKey)
+	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to sign speedup transaction",
+			"tx_id", txID, "error", err, "status", StatusFailure)
+		return fmt.Errorf("failed to sign transaction: %w", err)
+	}
+
+	// Отправляем транзакцию
+	if err = client.SendTransaction(ctx, signedTx); err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to send speedup transaction",
+			"tx_id", txID, "error", err, "status", StatusFailure)
+		return fmt.Errorf("failed to send transaction: %w", err)
+	}
+
+	newTxHash := signedTx.Hash().Hex()
+	bsc.logger.InfoContext(logCtx, "Successfully sent speedup transaction",
+		"tx_id", txID,
+		"new_tx_hash", newTxHash,
+		"original_tx_hash", pendingTx.TxHash,
+		"from", pendingTx.FromAddress.Hex(),
+		"to", pendingTx.ToAddress.Hex(),
+		"nonce", pendingTx.Nonce,
+		"original_gas_price", pendingTx.GasPrice.String(),
+		"new_gas_price", newGasPrice.String(),
+		"status", StatusSuccess,
+		"duration", time.Since(startTime).String())
+
+	// Обновляем информацию о транзакции в хранилище
+	bsc.trackTransaction(newTxHash, pendingTx.FromAddress, pendingTx.ToAddress, pendingTx.Nonce,
+		pendingTx.Amount, newGasPrice, pendingTx.GasLimit, pendingTx.PrivateKey, pendingTx.Data)
+
+	// Удаляем старую транзакцию из отслеживания (прямо передаем txHash)
+	bsc.removePendingTransaction(pendingTx.TxHash, pendingTx.FromAddress, pendingTx.Nonce)
+
+	return nil
+}
+
+// trackTransaction добавляет транзакцию в список ожидающих для возможного ускорения
+func (bsc *WalletService) trackTransaction(txHash string, fromAddr, toAddr common.Address, nonce uint64,
+	amount, gasPrice *big.Int, gasLimit uint64, privKey *ecdsa.PrivateKey, data []byte) {
+
+	tx := &PendingTransaction{
+		TxHash:      txHash,
+		FromAddress: fromAddr,
+		ToAddress:   toAddr,
+		Nonce:       nonce,
+		Amount:      amount,
+		GasPrice:    gasPrice,
+		GasLimit:    gasLimit,
+		PrivateKey:  privKey,
+		Data:        data,
+		CreatedAt:   time.Now(),
+	}
+
+	bsc.pendingTxsMu.Lock()
+	defer bsc.pendingTxsMu.Unlock()
+
+	// Сохраняем транзакцию в карте по хешу
+	bsc.pendingTxs[txHash] = tx
+
+	// Инициализируем карту нонсов для адреса, если она не существует
+	if _, exists := bsc.pendingTxsByAddr[fromAddr]; !exists {
+		bsc.pendingTxsByAddr[fromAddr] = make(map[uint64]string)
+	}
+
+	// Сохраняем связь адрес -> нонс -> хеш транзакции
+	bsc.pendingTxsByAddr[fromAddr][nonce] = txHash
+}
+
+// removePendingTransaction удаляет транзакцию из списка ожидающих
+func (bsc *WalletService) removePendingTransaction(txHash string, fromAddr common.Address, nonce uint64) {
+	bsc.pendingTxsMu.Lock()
+	defer bsc.pendingTxsMu.Unlock()
+
+	// Удаляем из карты по хешу
+	delete(bsc.pendingTxs, txHash)
+
+	// Удаляем связь адрес -> нонс -> хеш, если она существует
+	if nonceMap, exists := bsc.pendingTxsByAddr[fromAddr]; exists {
+		// Проверяем, что хеш по этому нонсу соответствует удаляемому
+		if storedHash, exists := nonceMap[nonce]; exists && storedHash == txHash {
+			delete(nonceMap, nonce)
+		}
+
+		// Если карта нонсов пуста, удаляем и ее
+		if len(nonceMap) == 0 {
+			delete(bsc.pendingTxsByAddr, fromAddr)
+		}
+	}
 }
