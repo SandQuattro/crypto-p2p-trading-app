@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // LogFields определяет стандартизированные поля для логирования
@@ -55,6 +58,24 @@ const (
 	TxStatusFailed    = "failed"
 )
 
+// BSC WebSocket endpoints
+var bscWSEndpoints = []string{
+	"wss://bsc-ws-node.nariox.org:443",
+	"wss://bsc.getblock.io/mainnet/",
+	"wss://bsc-mainnet.nodereal.io/ws",
+	"wss://rpc.ankr.com/bsc/ws",
+	"wss://bsc.publicnode.com",
+}
+
+// BSC HTTP endpoints
+var bscHTTPEndpoints = []string{
+	"https://bsc-dataseed.binance.org/",
+	"https://bsc-dataseed1.binance.org/",
+	"https://bsc-dataseed2.binance.org/",
+	"https://bsc-dataseed3.binance.org/",
+	"https://bsc-dataseed4.binance.org/",
+}
+
 type TransactionService interface {
 	GetTransactionsByWallet(ctx context.Context, walletAddress string) ([]entities.Transaction, error)
 	RecordTransaction(ctx context.Context, txHash common.Hash, walletAddress string, amount *big.Int, blockNumber int64) error
@@ -77,6 +98,7 @@ type WalletService interface {
 const (
 	USDTContractAddress    = "0x55d398326f99059fF775485246999027B3197955" // USDT BEP-20 контракт
 	subscriptionRetryDelay = 10 * time.Second                             // Delay before retrying subscription
+	maxConcurrentChecks    = 100                                          // Максимальное количество одновременных проверок подтверждений
 )
 
 // Define the ERC-20 transfer method signature.
@@ -90,6 +112,13 @@ type BinanceSmartChain struct {
 
 	transactions TransactionService
 	wallets      WalletService
+
+	// Семафор для ограничения одновременных проверок подтверждений
+	confirmationSemaphore chan struct{}
+
+	// Мьютекс для защиты lastProcessedBlock
+	mu                 sync.Mutex
+	lastProcessedBlock uint64
 }
 
 func NewBinanceSmartChain(
@@ -99,22 +128,25 @@ func NewBinanceSmartChain(
 	wallets WalletService,
 ) *BinanceSmartChain {
 	return &BinanceSmartChain{
-		logger:       logger,
-		config:       config,
-		transactions: transactions,
-		wallets:      wallets,
+		logger:                logger,
+		config:                config,
+		transactions:          transactions,
+		wallets:               wallets,
+		confirmationSemaphore: make(chan struct{}, maxConcurrentChecks),
 	}
 }
 
 // SubscribeToTransactions monitors incoming transactions via Web3.
-// The service will poll for new blocks and process incoming transactions.
+// The service will use WebSocket to listen for new blocks and process incoming transactions.
 func (bsc *BinanceSmartChain) SubscribeToTransactions(ctx context.Context, rpcURL string) {
 	for {
-		bsc.logger.InfoContext(ctx, "Starting blockchain monitoring...", "rpc_url", rpcURL)
+		bsc.logger.InfoContext(ctx, "Starting blockchain monitoring via WebSocket...")
 
-		if err := bsc.pollAndProcess(ctx, rpcURL); err != nil {
-			bsc.logger.InfoContext(ctx, "Blockchain monitoring error, retrying...",
+		// Пытаемся использовать WebSocket подписку
+		if err := bsc.subscribeViaWebsocket(ctx); err != nil {
+			bsc.logger.ErrorContext(ctx, "WebSocket subscription failed, retrying...",
 				"delay", subscriptionRetryDelay, "error", err)
+
 			select {
 			case <-ctx.Done():
 				return
@@ -127,71 +159,223 @@ func (bsc *BinanceSmartChain) SubscribeToTransactions(ctx context.Context, rpcUR
 	}
 }
 
-func (bsc *BinanceSmartChain) pollAndProcess(ctx context.Context, rpcURL string) error {
-	client, err := ethclient.DialContext(ctx, rpcURL)
-	if err != nil {
-		return fmt.Errorf("failed to connect to Ethereum client: %w", err)
+// subscribeViaWebsocket subscribes to new block headers via WebSocket
+func (bsc *BinanceSmartChain) subscribeViaWebsocket(ctx context.Context) error {
+	// Пробуем все WebSocket эндпоинты до успешного подключения
+	var wsClient *ethclient.Client
+	var rpcClient *rpc.Client
+	var wsEndpoint string
+	var err error
+
+	bsc.logger.InfoContext(ctx, "Attempting to connect via WebSocket")
+
+	for _, endpoint := range bscWSEndpoints {
+		bsc.logger.InfoContext(ctx, "Trying WebSocket endpoint", "endpoint", endpoint)
+
+		// Создаем RPC клиент с WebSocket соединением
+		rpcClient, err = rpc.DialContext(ctx, endpoint)
+		if err != nil {
+			bsc.logger.WarnContext(ctx, "Failed to connect to WebSocket endpoint",
+				"endpoint", endpoint, "error", err)
+			continue
+		}
+
+		// Создаем Ethereum клиент на основе RPC клиента
+		wsClient = ethclient.NewClient(rpcClient)
+		wsEndpoint = endpoint
+		bsc.logger.InfoContext(ctx, "Successfully connected to WebSocket endpoint",
+			"endpoint", endpoint)
+		break
 	}
-	defer client.Close()
 
-	// Process pending transactions every minute
-	processTicker := time.NewTicker(1 * time.Minute)
-	defer processTicker.Stop()
+	if wsClient == nil {
+		return fmt.Errorf("failed to connect to any WebSocket endpoint")
+	}
 
-	// Poll for new blocks every 5 seconds
-	pollTicker := time.NewTicker(5 * time.Second)
-	defer pollTicker.Stop()
+	defer wsClient.Close()
 
-	var lastProcessedBlock uint64
-
-	// Get current block number to start from
-	currentBlock, err := client.BlockNumber(ctx)
+	// Получаем текущий номер блока для начала мониторинга
+	currentBlock, err := wsClient.BlockNumber(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get current block number: %w", err)
 	}
 
-	lastProcessedBlock = currentBlock
-	bsc.logger.InfoContext(ctx, "Starting blockchain monitoring from block", "block", currentBlock)
+	bsc.mu.Lock()
+	bsc.lastProcessedBlock = currentBlock
+	bsc.mu.Unlock()
+
+	bsc.logger.InfoContext(ctx, "Starting WebSocket monitoring from block",
+		"block", currentBlock, "endpoint", wsEndpoint)
+
+	// Создаем канал для получения заголовков новых блоков
+	headers := make(chan *types.Header)
+
+	// Подписываемся на новые заголовки блоков
+	subscription, err := wsClient.SubscribeNewHead(ctx, headers)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to new headers: %w", err)
+	}
+	defer subscription.Unsubscribe()
+
+	// Обрабатываем поступающие транзакции каждую минуту
+	processTicker := time.NewTicker(1 * time.Minute)
+	defer processTicker.Stop()
+
+	// Создаем HTTP клиент для получения полных данных блоков
+	// (WebSocket не всегда возвращает полную информацию о блоке)
+	httpClient, err := getHTTPClient(ctx, bsc.logger)
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP client: %w", err)
+	}
+	defer httpClient.Close()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("pullAndProcess done with %w", ctx.Err())
-		case <-processTicker.C:
-			if err = bsc.transactions.ProcessPendingTransactions(ctx); err != nil {
-				bsc.logger.ErrorContext(ctx, "Failed to process pending transactions", "error", err)
-			}
-		case <-pollTicker.C:
-			// Get latest block number
-			latestBlock, e := client.BlockNumber(ctx)
-			if e != nil {
-				bsc.logger.ErrorContext(ctx, "Failed to get latest block number", "error", e)
-				continue
-			}
+			return fmt.Errorf("WebSocket subscription done with %w", ctx.Err())
 
-			// Process new blocks
-			if latestBlock > lastProcessedBlock {
-				// bsc.logger.InfoContext(ctx,"New blocks detected", "from", lastProcessedBlock+1, "to", latestBlock)
+		case err := <-subscription.Err():
+			return fmt.Errorf("WebSocket subscription error: %w", err)
 
-				// Process each new block
-				for blockNum := lastProcessedBlock + 1; blockNum <= latestBlock; blockNum++ {
-					block, err := client.BlockByNumber(ctx, big.NewInt(int64(blockNum)))
-					if err != nil {
-						bsc.logger.ErrorContext(ctx, "Failed to get block", "block", blockNum, "error", err)
-						continue
-					}
+		case header := <-headers:
+			// Получаем номер блока из заголовка
+			blockNumber := header.Number.Uint64()
 
-					bsc.processBlock(ctx, client, block.Header())
+			bsc.mu.Lock()
+			lastProcessed := bsc.lastProcessedBlock
+			bsc.mu.Unlock()
+
+			// Проверяем, не пропустили ли мы блоки
+			if blockNumber > lastProcessed+1 {
+				bsc.logger.WarnContext(ctx, "Missed blocks detected, fetching missing blocks",
+					"from", lastProcessed+1, "to", blockNumber-1)
+
+				// Получаем пропущенные блоки через HTTP клиент
+				for missedBlock := lastProcessed + 1; missedBlock < blockNumber; missedBlock++ {
+					bsc.processBlockByNumber(ctx, httpClient, missedBlock)
 				}
+			}
 
-				lastProcessedBlock = latestBlock
+			// Обрабатываем текущий блок
+			if err := bsc.processBlockHeader(ctx, httpClient, header); err != nil {
+				bsc.logger.ErrorContext(ctx, "Failed to process block header",
+					"block", blockNumber, "error", err)
+			}
+
+			// Обновляем последний обработанный блок
+			bsc.mu.Lock()
+			if blockNumber > bsc.lastProcessedBlock {
+				bsc.lastProcessedBlock = blockNumber
+			}
+			bsc.mu.Unlock()
+
+		case <-processTicker.C:
+			// Периодически обрабатываем ожидающие транзакции
+			if err := bsc.transactions.ProcessPendingTransactions(ctx); err != nil {
+				bsc.logger.ErrorContext(ctx, "Failed to process pending transactions",
+					"error", err)
 			}
 		}
 	}
 }
 
+// processBlockByNumber обрабатывает блок по его номеру
+func (bsc *BinanceSmartChain) processBlockByNumber(ctx context.Context, client *ethclient.Client, blockNumber uint64) {
+	// Добавляем механизм повторных попыток для случаев, когда блок еще не доступен
+	maxRetries := 3
+	retryDelay := 500 * time.Millisecond
+
+	var block *types.Block
+	var err error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		block, err = client.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
+		if err == nil {
+			break // Блок успешно получен
+		}
+
+		// Проверяем, является ли ошибка "not found"
+		if strings.Contains(err.Error(), "not found") {
+			if attempt < maxRetries {
+				bsc.logger.InfoContext(ctx, "Block not available yet, retrying",
+					"block", blockNumber, "attempt", attempt, "max_retries", maxRetries,
+					"retry_delay", retryDelay)
+
+				// Ждем перед следующей попыткой
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(retryDelay):
+					// Увеличиваем задержку для каждой следующей попытки
+					retryDelay = retryDelay * 2
+					continue
+				}
+			}
+		}
+
+		// Если это не ошибка "not found" или все попытки исчерпаны, логируем ошибку
+		bsc.logger.ErrorContext(ctx, "Failed to get block by number",
+			"block", blockNumber, "error", err, "attempts", attempt)
+		return
+	}
+
+	bsc.processBlock(ctx, client, block.Header())
+}
+
+// processBlockHeader обрабатывает заголовок блока
+func (bsc *BinanceSmartChain) processBlockHeader(ctx context.Context, client *ethclient.Client, header *types.Header) error {
+	// Добавляем механизм повторных попыток для случаев, когда блок еще не доступен
+	maxRetries := 3
+	retryDelay := 500 * time.Millisecond
+	startTime := time.Now() // Добавляем измерение времени
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// Получаем полные данные блока по хешу заголовка
+		block, err := client.BlockByHash(ctx, header.Hash())
+		if err == nil {
+			// Блок успешно получен, обрабатываем его
+			return bsc.processBlock(ctx, client, block.Header())
+		}
+
+		// Проверяем, является ли ошибка "not found"
+		if strings.Contains(err.Error(), "not found") {
+			if attempt < maxRetries {
+				bsc.logger.InfoContext(ctx, "Block not available yet by hash, retrying",
+					"block_hash", header.Hash().Hex(),
+					"block", header.Number.Uint64(),
+					"attempt", attempt,
+					"max_retries", maxRetries,
+					"retry_delay", retryDelay)
+
+				// Ждем перед следующей попыткой
+				select {
+				case <-ctx.Done():
+					return fmt.Errorf("context done: %w", ctx.Err())
+				case <-time.After(retryDelay):
+					// Увеличиваем задержку для каждой следующей попытки
+					retryDelay = retryDelay * 2
+					continue
+				}
+			}
+		}
+
+		// Если это не ошибка "not found" или все попытки исчерпаны, возвращаем ошибку
+		bsc.logger.ErrorContext(ctx, "Failed to get block",
+			"error", err,
+			"block_hash", header.Hash().Hex(),
+			"block", header.Number.Uint64(),
+			"attempts", attempt,
+			"duration", time.Since(startTime).String())
+
+		return err
+	}
+
+	// Этот код не должен выполниться, но компилятор требует возврат значения
+	return fmt.Errorf("unexpected execution path in processBlockHeader")
+}
+
 // processBlock обрабатывает блок и ищет релевантные транзакции
-func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclient.Client, header *types.Header) {
+func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclient.Client, header *types.Header) error {
 	// Начинаем отсчет времени обработки блока
 	startTime := time.Now()
 
@@ -202,7 +386,7 @@ func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclien
 			"error", err,
 			"block_hash", header.Hash().Hex(),
 			"duration", time.Since(startTime).String())
-		return
+		return err
 	}
 
 	blockNumber := block.NumberU64()
@@ -296,7 +480,8 @@ func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclien
 						}
 
 						// Check confirmations after RequiredConfirmations blocks
-						go bsc.checkConfirmations(ctx, client, tx.Hash(), blockNumber, txID)
+						// Используем семафор для ограничения количества одновременных проверок
+						bsc.scheduleConfirmationCheck(ctx, client, tx.Hash(), blockNumber, txID)
 					}
 				}
 			}
@@ -309,6 +494,32 @@ func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclien
 		"block_hash", blockHash,
 		"duration", time.Since(startTime).String(),
 		"tx_processed", len(block.Transactions()))
+
+	return nil
+}
+
+// scheduleConfirmationCheck планирует проверку подтверждений с использованием семафора
+func (bsc *BinanceSmartChain) scheduleConfirmationCheck(
+	ctx context.Context,
+	client *ethclient.Client,
+	txHash common.Hash,
+	blockNumber uint64,
+	txID string,
+) {
+	// Создаем отдельную горутину для ожидания доступного слота в семафоре
+	go func() {
+		// Ожидаем доступный слот или завершение контекста
+		select {
+		case <-ctx.Done():
+			return
+		case bsc.confirmationSemaphore <- struct{}{}:
+			// Слот получен, запускаем проверку подтверждений
+			go func() {
+				defer func() { <-bsc.confirmationSemaphore }() // Освобождаем слот после выполнения
+				bsc.checkConfirmations(ctx, client, txHash, blockNumber, txID)
+			}()
+		}
+	}()
 }
 
 // checkConfirmations ждет требуемого количества подтверждений и затем подтверждает транзакцию.
@@ -381,4 +592,27 @@ func (bsc *BinanceSmartChain) checkConfirmations(
 				"elapsed_time", time.Since(startTime).String())
 		}
 	}
+}
+
+// getHTTPClient создает HTTP-клиент для взаимодействия с блокчейном
+func getHTTPClient(ctx context.Context, logger *slog.Logger) (*ethclient.Client, error) {
+	var client *ethclient.Client
+	var err, lastErr error
+
+	// Пробуем подключиться к разным эндпоинтам
+	for _, endpoint := range bscHTTPEndpoints {
+		logger.InfoContext(ctx, "Trying to connect to HTTP endpoint", "endpoint", endpoint)
+
+		client, err = ethclient.DialContext(ctx, endpoint)
+		if err == nil {
+			logger.InfoContext(ctx, "Successfully connected to HTTP endpoint", "endpoint", endpoint)
+			return client, nil
+		}
+
+		lastErr = err
+		logger.WarnContext(ctx, "Failed to connect to HTTP endpoint",
+			"endpoint", endpoint, "error", err)
+	}
+
+	return nil, fmt.Errorf("failed to connect to any HTTP endpoint: %w", lastErr)
 }
