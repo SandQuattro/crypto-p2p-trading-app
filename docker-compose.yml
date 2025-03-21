@@ -13,6 +13,7 @@ services:
       - WALLET_SEED=your secure seed phrase here
       - RPC_URL=https://bsc-dataseed.binance.org/
       - REQUIRED_CONFIRMATIONS=3
+      - BLOCKCHAIN_DEBUG_MODE=${BLOCKCHAIN_DEBUG_MODE:-false}   # Use value from .env, default to false if not set
     depends_on:
       postgres:
         condition: service_healthy

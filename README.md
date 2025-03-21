@@ -20,7 +20,144 @@ Here's a comprehensive guide to test your cryptocurrency order processing system
 2. Have access to a BSC wallet with some BEP-20 USDT for testing (can use Metamask with BSC Testnet)
 3. Have a tool like Postman or curl for making API requests
 
-## Testing Flow
+## Testing Flow on TestNet
+
+# Step-by-Step Plan to Test Your BSC Testnet Wallet
+
+## 1. Get Test BNB from a BSC Testnet Faucet
+
+1. Go to the BNB Smart Chain Testnet Faucet: https://testnet.bnbchain.org/faucet-smart
+2. Enter your wallet address: `0x`
+3. Solve the captcha and click "Give me BNB"
+4. The faucet will send you some test BNB (usually 0.1 to 1 BNB)
+
+Alternative faucets if the official one isn't working:
+- https://faucet.quicknode.com/bnb-chain/bnb-testnet
+- https://testnet.binance.org/faucet-smart
+
+## 2. Check Your Wallet Balance
+
+1. Check your wallet on the BSC Testnet Explorer:
+   - Go to https://testnet.bscscan.com/
+   - Enter your wallet address `0x` in the search bar
+   - You should see your balance and any transactions
+
+2. Create an endpoint in your app to check balance (optional):
+   ```bash
+   # Run this command to check the balance
+   curl "http://localhost:8080/transactions/wallet?wallet=0x6C83946e958Db8A7F8a49981A412E5f59be27E3B"
+   ```
+
+## 3. Send Test BNB to Another Wallet
+
+1. Create a second wallet for testing:
+   ```bash
+   curl -X POST "http://localhost:8080/generate_wallet?user_id=456"
+   ```
+   (Save the returned wallet address)
+
+2. Send some BNB from your first wallet to the second wallet:
+   ```bash
+   curl -X POST "http://localhost:8080/transfer" \
+   -H "Content-Type: application/json" \
+   -d '{
+     "from_wallet_id": 17,
+     "to_address": "ADDRESS_OF_SECOND_WALLET",
+     "amount": "0.01",
+     "priority": "medium"
+   }'
+   ```
+
+3. Check both wallets to confirm the transaction:
+   ```bash
+   curl "http://localhost:8080/transactions/wallet?wallet=0x6C83946e958Db8A7F8a49981A412E5f59be27E3B"
+   curl "http://localhost:8080/transactions/wallet?wallet=ADDRESS_OF_SECOND_WALLET"
+   ```
+
+## 4. Get Test USDT on BSC Testnet
+
+1. You'll need to interact with a testnet USDT contract
+2. The contract address is already configured in your app: `0x337610d27c682E347C9cD60BD4b3b107C9d34dDd`
+3. You can get test USDT by:
+   - Swapping some test BNB for USDT on PancakeSwap Testnet (https://pancake.kiemtienonline360.com/)
+   - Or using a USDT test faucet if available
+
+## 5. Transfer Test USDT Between Wallets
+
+1. After you have test USDT, transfer some to the second wallet:
+   ```bash
+   curl -X POST "http://localhost:8080/transfer" \
+   -H "Content-Type: application/json" \
+   -d '{
+     "from_wallet_id": 17,
+     "to_address": "ADDRESS_OF_SECOND_WALLET",
+     "amount": "1.0",
+     "token_address": "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd",
+     "priority": "medium"
+   }'
+   ```
+
+## 6. Monitor Transaction Progress
+
+1. Check the transaction status on BSC Testnet Explorer:
+   - When you execute a transfer, you'll get a transaction hash
+   - Go to https://testnet.bscscan.com/ and search for that hash
+   - You can see details like status, block confirmations, gas used, etc.
+
+2. View your application logs to see transaction processing:
+   ```bash
+   docker logs crypto-p2p-trading-app | grep -i "transaction"
+   ```
+
+## 7. Test Error Handling
+
+1. Try a transaction with insufficient funds:
+   ```bash
+   curl -X POST "http://localhost:8080/transfer" \
+   -H "Content-Type: application/json" \
+   -d '{
+     "from_wallet_id": 17,
+     "to_address": "ADDRESS_OF_SECOND_WALLET",
+     "amount": "1000.0",
+     "priority": "medium"
+   }'
+   ```
+
+2. Check how your app handles the error
+
+## 8. Test Different Priority Levels
+
+1. Try sending with different priority levels (affects gas price):
+   ```bash
+   # Low priority
+   curl -X POST "http://localhost:8080/transfer" \
+   -H "Content-Type: application/json" \
+   -d '{
+     "from_wallet_id": 17,
+     "to_address": "ADDRESS_OF_SECOND_WALLET",
+     "amount": "0.01",
+     "priority": "low"
+   }'
+   
+   # High priority
+   curl -X POST "http://localhost:8080/transfer" \
+   -H "Content-Type: application/json" \
+   -d '{
+     "from_wallet_id": 17,
+     "to_address": "ADDRESS_OF_SECOND_WALLET",
+     "amount": "0.01",
+     "priority": "high"
+   }'
+   ```
+
+## 9. Verify All Operations in Debug Mode
+
+1. Check the logs to confirm that all operations are using testnet:
+   ```bash
+   docker logs crypto-p2p-trading-app | grep -i "testnet\|debug mode"
+   ```
+
+## Testing Flow On MainNet Production
 
 ### Step 1: Create a User Order
 

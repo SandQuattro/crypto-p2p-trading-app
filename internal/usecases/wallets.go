@@ -8,6 +8,7 @@ import (
 	"log"
 	"log/slog"
 	"math/big"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +31,30 @@ import (
 	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
 )
+
+// Blockchain network configuration
+const (
+	// Environment variable to check for debug mode
+	EnvBlockchainDebugMode = "BLOCKCHAIN_DEBUG_MODE"
+
+	// Token contract addresses
+	MainnetUSDTAddress = "0x55d398326f99059fF775485246999027B3197955" // USDT on BSC Mainnet
+	TestnetUSDTAddress = "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd" // USDT on BSC Testnet
+)
+
+// IsBlockchainDebugMode checks if blockchain debug mode is enabled via environment variable
+func IsBlockchainDebugMode() bool {
+	debugMode := os.Getenv(EnvBlockchainDebugMode)
+	return strings.ToLower(debugMode) == "true" || strings.ToLower(debugMode) == "1"
+}
+
+// GetUSDTContractAddress returns the appropriate USDT contract address based on mode
+func GetUSDTContractAddress() string {
+	if IsBlockchainDebugMode() {
+		return TestnetUSDTAddress
+	}
+	return MainnetUSDTAddress
+}
 
 // Константы для логирования
 const (
@@ -109,11 +134,21 @@ func NewWalletService(
 	transactions *TransactionServiceImpl,
 	walletsRepo *repository.WalletsRepository,
 ) (*WalletService, error) {
+	// Get the appropriate USDT contract address based on mode
+	contractAddress := GetUSDTContractAddress()
+
+	// Log which mode we're operating in
+	if IsBlockchainDebugMode() {
+		logger.Info("Wallet service initialized in DEBUG mode (using BSC Testnet)")
+	} else {
+		logger.Info("Wallet service initialized in PRODUCTION mode (using BSC Mainnet)")
+	}
+
 	ws := &WalletService{
 		logger: logger,
 
 		erc20ABI:             `[{"constant":true,"inputs":[{"name":"_owner","type":"address"}],"name":"balanceOf","outputs":[{"name":"balance","type":"uint256"}],"type":"function"}]`,
-		smartContractAddress: "0x55d398326f99059fF775485246999027B3197955",
+		smartContractAddress: contractAddress,
 
 		seed:         seed,
 		masterKey:    CreateMasterKey(seed),
@@ -815,13 +850,32 @@ func CreateMasterKey(seed string) *bip32.Key {
 
 // GetBSCClient connects to one of the BSC RPC endpoints
 func GetBSCClient(ctx context.Context, logger *slog.Logger) (*ethclient.Client, error) {
+	// Check if we're in debug/test mode
+	debugMode := IsBlockchainDebugMode()
+
 	// Список RPC эндпоинтов BSC (для резервирования)
-	bscRpcEndpoints := []string{
-		"https://bsc-dataseed.binance.org/",
-		"https://bsc-dataseed1.binance.org/",
-		"https://bsc-dataseed2.binance.org/",
-		"https://bsc-dataseed3.binance.org/",
-		"https://bsc-dataseed4.binance.org/",
+	var bscRpcEndpoints []string
+
+	if debugMode {
+		// Testnet endpoints for debug/test mode
+		bscRpcEndpoints = []string{
+			"https://data-seed-prebsc-1-s1.binance.org:8545/",
+			"https://data-seed-prebsc-2-s1.binance.org:8545/",
+			"https://data-seed-prebsc-1-s2.binance.org:8545/",
+			"https://data-seed-prebsc-2-s2.binance.org:8545/",
+			"https://data-seed-prebsc-1-s3.binance.org:8545/",
+		}
+		logger.Info("Using BSC Testnet endpoints (DEBUG MODE)")
+	} else {
+		// Mainnet endpoints for production
+		bscRpcEndpoints = []string{
+			"https://bsc-dataseed.binance.org/",
+			"https://bsc-dataseed1.binance.org/",
+			"https://bsc-dataseed2.binance.org/",
+			"https://bsc-dataseed3.binance.org/",
+			"https://bsc-dataseed4.binance.org/",
+		}
+		logger.Info("Using BSC Mainnet endpoints (PRODUCTION MODE)")
 	}
 
 	// Пробуем подключиться к разным эндпоинтам
