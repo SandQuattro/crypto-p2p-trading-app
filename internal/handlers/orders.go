@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 )
 

@@ -3,12 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/jackc/pgx/v5"
-	cfg "github.com/sand/crypto-p2p-trading-app/backend/config"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/mocked"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/repository"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/workers"
-	"github.com/sand/crypto-p2p-trading-app/backend/pkg/database"
 	"log"
 	"log/slog"
 	"net/http"
@@ -16,6 +10,13 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	cfg "github.com/sand/crypto-p2p-trading-app/backend/config"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/mocked"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/repository"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/workers"
+	"github.com/sand/crypto-p2p-trading-app/backend/pkg/database"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"

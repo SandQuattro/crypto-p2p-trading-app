@@ -2,10 +2,11 @@ package mocked
 
 import (
 	"crypto/rand"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases"
 	"log/slog"
 	"math/big"
 	"time"
+
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases"
 
 	"github.com/gorilla/websocket"
 

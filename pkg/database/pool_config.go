@@ -3,9 +3,10 @@ package database
 import (
 	"context"
 	"fmt"
-	"github.com/sand/crypto-p2p-trading-app/backend/config"
 	"log/slog"
 	"time"
+
+	"github.com/sand/crypto-p2p-trading-app/backend/config"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/multitracer"

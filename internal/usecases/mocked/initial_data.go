@@ -1,9 +1,10 @@
 package mocked
 
 import (
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 	"math"
 	"time"
+
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 )
 
 // GenerateInitialCandleData generates initial candle data for a trading pair.

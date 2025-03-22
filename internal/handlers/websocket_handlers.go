@@ -1,9 +1,10 @@
 package handlers
 
 import (
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/mocked"
 	"log/slog"
 	"net/http"
+
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/mocked"
 
 	"github.com/gorilla/mux"
 )

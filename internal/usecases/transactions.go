@@ -2,8 +2,9 @@ package usecases
 
 import (
 	"context"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 	"math/big"
+
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 
 	"github.com/ethereum/go-ethereum/common"
 )
