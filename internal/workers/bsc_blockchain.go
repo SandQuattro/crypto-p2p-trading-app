@@ -85,8 +85,9 @@ type TransactionService interface {
 
 // WalletService defines the interface for wallet operations.
 type WalletService interface {
-	IsOurWallet(ctx context.Context, address string) (bool, error)
+	GenerateSeedPhrase(entropyBits int) (string, error)
 	GenerateWalletForUser(ctx context.Context, userID int64) (int, string, error)
+	IsOurWallet(ctx context.Context, address string) (bool, error)
 	GetAllTrackedWalletsForUser(ctx context.Context, userID int64) ([]string, error)
 	GetWalletDetailsForUser(ctx context.Context, userID int64) ([]entities.WalletDetail, error)
 	GetERC20TokenBalance(ctx context.Context, client *ethclient.Client, walletAddress string) (*big.Int, error)
@@ -96,6 +97,7 @@ type WalletService interface {
 	TransferFundsWithPriority(ctx context.Context, client *ethclient.Client, fromWalletID int, toAddress string, amount *big.Int, priority string) (string, error)
 	TransferAllBNB(ctx context.Context, toAddress, depositUserWalletAddress string, userID, index int) (string, error)
 	TransferAllBNBWithPriority(ctx context.Context, toAddress, depositUserWalletAddress string, userID, index int, priority string) (string, error)
+	CheckBalance(ctx context.Context, client *ethclient.Client, walletAddress string) (*big.Int, error)
 }
 
 const (

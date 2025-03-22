@@ -1170,3 +1170,66 @@ func (bsc *WalletService) removePendingTransaction(txHash string, fromAddr commo
 		}
 	}
 }
+
+// CheckBalance retrieves the USDT balance for the given wallet address
+func (bsc *WalletService) CheckBalance(ctx context.Context, client *ethclient.Client, walletAddress string) (*big.Int, error) {
+	// Create a logger context for tracking
+	txID := uuid.New().String()
+	startTime := time.Now()
+	logCtx := context.WithValue(ctx, "tx_id", txID)
+
+	bsc.logger.InfoContext(logCtx, "Checking wallet balance",
+		"tx_id", txID,
+		"address", walletAddress,
+		"status", StatusPending)
+
+	// Get the token balance using the existing method
+	balance, err := bsc.GetERC20TokenBalance(ctx, client, walletAddress)
+	if err != nil {
+		bsc.logger.ErrorContext(logCtx, "Failed to get token balance",
+			"tx_id", txID,
+			"error", err.Error(),
+			"address", walletAddress,
+			"status", StatusFailure,
+			"duration", time.Since(startTime).String())
+		return nil, fmt.Errorf("failed to get token balance: %w", err)
+	}
+
+	// Log success
+	bsc.logger.InfoContext(logCtx, "Successfully retrieved token balance",
+		"tx_id", txID,
+		"address", walletAddress,
+		"balance", balance.String(),
+		"status", StatusSuccess,
+		"duration", time.Since(startTime).String())
+
+	return balance, nil
+}
+
+// GenerateSeedPhrase creates a new random BIP39 mnemonic seed phrase
+// The entropy parameter specifies the strength:
+// - 128 bits = 12 words
+// - 160 bits = 15 words
+// - 192 bits = 18 words
+// - 224 bits = 21 words
+// - 256 bits = 24 words
+func (bsc *WalletService) GenerateSeedPhrase(entropyBits int) (string, error) {
+	// Validate entropy bits
+	if entropyBits != 128 && entropyBits != 160 && entropyBits != 192 && entropyBits != 224 && entropyBits != 256 {
+		return "", fmt.Errorf("invalid entropy bits: %d (must be 128, 160, 192, 224, or 256)", entropyBits)
+	}
+
+	// Generate entropy
+	entropy, err := bip39.NewEntropy(entropyBits)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate entropy: %w", err)
+	}
+
+	// Convert entropy to mnemonic
+	mnemonic, err := bip39.NewMnemonic(entropy)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate mnemonic: %w", err)
+	}
+
+	return mnemonic, nil
+}

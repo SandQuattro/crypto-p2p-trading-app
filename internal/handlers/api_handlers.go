@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/workers"
 	"log/slog"
 	"math/big"
 	"net/http"
 	"strconv"
+
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/workers"
 
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/mocked"
 
@@ -53,6 +54,7 @@ func (h *HTTPHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/wallets/user", h.GetUserWallets).Methods("GET")
 	router.HandleFunc("/wallets/ids", h.GetWalletDetailsHandler).Methods("GET")
 	router.HandleFunc("/transfer", h.TransferFundsHandler).Methods("POST")
+	router.HandleFunc("/balance", h.CheckWalletBalance).Methods("GET")
 
 	// Transactions
 	router.HandleFunc("/transactions/wallet", h.GetWalletTransactions).Methods("GET")
@@ -346,5 +348,37 @@ func (h *HTTPHandler) TransferFundsHandler(w http.ResponseWriter, r *http.Reques
 		"status":  "success",
 		"tx_hash": txHash,
 		"message": fmt.Sprintf("Successfully initiated transfer of %s USDT from wallet ID %d to %s", amountParam, fromWalletID, toAddress),
+	})
+}
+
+// CheckWalletBalance returns the USDT balance for a specific wallet address
+func (h *HTTPHandler) CheckWalletBalance(w http.ResponseWriter, r *http.Request) {
+	// Get wallet address from query parameter
+	walletAddress := r.URL.Query().Get("address")
+	if walletAddress == "" {
+		http.Error(w, "Missing required parameter: address", http.StatusBadRequest)
+		return
+	}
+
+	// Check if the wallet is valid
+	balance, err := h.walletService.CheckBalance(r.Context(), h.bscClient, walletAddress)
+	if err != nil {
+		h.logger.Error("Error checking wallet balance", "error", err, "address", walletAddress)
+		http.Error(w, fmt.Sprintf("Failed to check balance: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Format balance to show as USDT (divide by 10^18)
+	balanceFloat := new(big.Float).Quo(
+		new(big.Float).SetInt(balance),
+		new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)),
+	)
+
+	// Return the balance
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"address":      walletAddress,
+		"balance_wei":  balance.String(),
+		"balance_usdt": balanceFloat.Text('f', 6), // Format to 6 decimal places
 	})
 }
