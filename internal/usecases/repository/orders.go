@@ -127,7 +127,9 @@ func (r *OrdersRepository) RemoveOldOrders(ctx context.Context, olderThan time.D
 	// Get the number of deleted rows
 	deletedCount := result.RowsAffected()
 
-	r.logger.Info("Removed old pending orders", "count", deletedCount, "older_than", olderThan.String())
+	if deletedCount > 0 {
+		r.logger.Info("Removed old pending orders", "count", deletedCount, "older_than", olderThan.String())
+	}
 
 	return deletedCount, nil
 }

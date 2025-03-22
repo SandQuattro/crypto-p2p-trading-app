@@ -344,12 +344,12 @@ func (bsc *BinanceSmartChain) processBlockHeader(ctx context.Context, client *et
 		// Проверяем, является ли ошибка "not found"
 		if strings.Contains(err.Error(), "not found") {
 			if attempt < maxRetries {
-				bsc.logger.InfoContext(ctx, "Block not available yet by hash, retrying",
-					"block_hash", header.Hash().Hex(),
-					"block", header.Number.Uint64(),
-					"attempt", attempt,
-					"max_retries", maxRetries,
-					"retry_delay", retryDelay)
+				// bsc.logger.InfoContext(ctx, "Block not available yet by hash, retrying",
+				//	"block_hash", header.Hash().Hex(),
+				//	"block", header.Number.Uint64(),
+				//	"attempt", attempt,
+				//	"max_retries", maxRetries,
+				//	"retry_delay", retryDelay)
 
 				// Ждем перед следующей попыткой
 				select {
@@ -402,11 +402,11 @@ func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclien
 		Timestamp:   time.Now(),
 	}
 
-	bsc.logger.InfoContext(ctx, "Processing new block",
-		"block_number", blockNumber,
-		"block_hash", blockHash,
-		"tx_count", len(block.Transactions()),
-		"timestamp", time.Now().Format(time.RFC3339))
+	// bsc.logger.InfoContext(ctx, "Processing new block",
+	//	"block_number", blockNumber,
+	//	"block_hash", blockHash,
+	//	"tx_count", len(block.Transactions()),
+	//	"timestamp", time.Now().Format(time.RFC3339))
 
 	for i, tx := range block.Transactions() {
 		txID := uuid.New().String() // Генерируем уникальный ID для отслеживания транзакции
@@ -493,11 +493,11 @@ func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclien
 	}
 
 	// Логируем общее время обработки блока
-	bsc.logger.InfoContext(ctx, "Block processing completed",
-		"block_number", blockNumber,
-		"block_hash", blockHash,
-		"duration", time.Since(startTime).String(),
-		"tx_processed", len(block.Transactions()))
+	// bsc.logger.InfoContext(ctx, "Block processing completed",
+	//	"block_number", blockNumber,
+	//	"block_hash", blockHash,
+	//	"duration", time.Since(startTime).String(),
+	//	"tx_processed", len(block.Transactions()))
 
 	return nil
 }
