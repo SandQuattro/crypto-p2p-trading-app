@@ -1,5 +1,6 @@
 import React, {useEffect, useRef} from 'react';
 import {createChart} from 'lightweight-charts';
+import {API_BASE_URL, BASE_URL} from '../services/api';
 
 const TradingChart = ({ symbol }) => {
   const chartContainerRef = useRef(null);
@@ -8,12 +9,12 @@ const TradingChart = ({ symbol }) => {
   // Re-create chart whenever symbol changes
   useEffect(() => {
     if (!chartContainerRef.current || !symbol) return;
-    
+
     console.log(`Creating new chart for ${symbol}`);
-    
+
     // Clear container before creating a new chart
     chartContainerRef.current.innerHTML = '';
-    
+
     // Create new chart
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
@@ -55,13 +56,13 @@ const TradingChart = ({ symbol }) => {
     const fetchCandleData = async () => {
       try {
         console.log(`Fetching candles for ${symbol}`);
-        const response = await fetch(`http://localhost:8080/api/candles/${symbol}`);
+        const response = await fetch(`${API_BASE_URL}/candles/${symbol}`);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
         console.log(`Received ${data.length} candles for ${symbol}`);
-        
+
         // Format data for the chart
         const formattedData = data.map(candle => ({
           time: candle.time / 1000, // Convert from milliseconds to seconds
@@ -70,23 +71,23 @@ const TradingChart = ({ symbol }) => {
           low: candle.low,
           close: candle.close,
         }));
-        
+
         if (formattedData.length > 0) {
           console.log(`Setting ${formattedData.length} candles for ${symbol}`);
-          
+
           // Use optimized method to set data
           candleSeries.setData(formattedData);
-          
+
           // Set visible range to 24 hours
           const lastTime = formattedData[formattedData.length - 1].time;
           const oneDayAgo = lastTime - 3600 * 24; // 3600 seconds = 1 hour, * 24 = 24 hours
-          
+
           // Optimize setting the visible range
           chart.timeScale().setVisibleRange({
             from: oneDayAgo,
             to: lastTime,
           });
-          
+
           // Force chart update
           chart.applyOptions({
             timeScale: {
@@ -119,12 +120,15 @@ const TradingChart = ({ symbol }) => {
         ws.current.close();
       }
 
+      // Extract hostname from BASE_URL (removing http:// protocol)
+      const wsHost = BASE_URL.replace(/^http:\/\//, '');
+
       console.log(`Setting up WebSocket for ${symbol}`);
-      const socket = new WebSocket(`ws://localhost:8080/ws/${symbol}`);
-      
+      const socket = new WebSocket(`ws://${wsHost}/ws/${symbol}`);
+
       // Optimization: use binary format for WebSocket
       socket.binaryType = "arraybuffer";
-      
+
       socket.onopen = () => {
         console.log(`WebSocket connected for ${symbol}`);
       };
@@ -132,11 +136,11 @@ const TradingChart = ({ symbol }) => {
       socket.onmessage = (event) => {
         try {
           const update = JSON.parse(event.data);
-          
+
           // Update only if there is new candle data
           if (update.lastCandle) {
             const candle = update.lastCandle;
-            
+
             // Optimization: check if we need to update the series
             const formattedCandle = {
               time: candle.time / 1000, // Convert from milliseconds to seconds
@@ -145,7 +149,7 @@ const TradingChart = ({ symbol }) => {
               low: candle.low,
               close: candle.close,
             };
-            
+
             // Use more efficient update method
             candleSeries.update(formattedCandle);
           }

@@ -52,6 +52,7 @@ func (h *HTTPHandler) RegisterRoutes(router *mux.Router) {
 	// Wallets
 	router.HandleFunc("/wallet/generate", h.GenerateWallet).Methods("POST")
 	router.HandleFunc("/wallets/user", h.GetUserWallets).Methods("GET")
+	router.HandleFunc("/wallets/ids", h.GetWalletDetailsHandler).Methods("GET")
 	router.HandleFunc("/wallet/balance", h.CheckWalletBalance).Methods("GET")
 	router.HandleFunc("/wallet/balances", h.GetWalletBalancesHandler).Methods("GET")
 	router.HandleFunc("/wallet/details", h.GetWalletDetailsHandler).Methods("GET")
@@ -62,7 +63,7 @@ func (h *HTTPHandler) RegisterRoutes(router *mux.Router) {
 
 	// Trading, Candles
 	router.HandleFunc("/data/pairs", h.GetTradingPairsHandler).Methods("GET")
-	router.HandleFunc("/data/candles", h.GetCandlesHandler).Methods("GET")
+	router.HandleFunc("/data/candles/{symbol}", h.GetCandlesHandler).Methods("GET")
 
 	// Static files - register last to avoid intercepting other routes.
 	fs := http.FileServer(http.Dir("./static"))

@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8080/api';
-const BASE_URL = 'http://localhost:8080';
+export const API_BASE_URL = 'http://localhost:8080/data';
+export const BASE_URL = 'http://localhost:8080';
 
 // Fetch all available trading pairs
 export const fetchTradingPairs = async () => {
