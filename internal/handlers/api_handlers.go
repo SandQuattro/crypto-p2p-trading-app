@@ -50,18 +50,19 @@ func (h *HTTPHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/create_order", h.CreateOrder).Methods("POST")
 
 	// Wallets
-	router.HandleFunc("/generate_wallet", h.GenerateWallet).Methods("POST")
+	router.HandleFunc("/wallet/generate", h.GenerateWallet).Methods("POST")
 	router.HandleFunc("/wallets/user", h.GetUserWallets).Methods("GET")
-	router.HandleFunc("/wallets/ids", h.GetWalletDetailsHandler).Methods("GET")
-	router.HandleFunc("/transfer", h.TransferFundsHandler).Methods("POST")
-	router.HandleFunc("/balance", h.CheckWalletBalance).Methods("GET")
+	router.HandleFunc("/wallet/balance", h.CheckWalletBalance).Methods("GET")
+	router.HandleFunc("/wallet/balances", h.GetWalletBalancesHandler).Methods("GET")
+	router.HandleFunc("/wallet/details", h.GetWalletDetailsHandler).Methods("GET")
+	router.HandleFunc("/wallet/transfer", h.TransferFundsHandler).Methods("POST")
 
 	// Transactions
 	router.HandleFunc("/transactions/wallet", h.GetWalletTransactions).Methods("GET")
 
 	// Trading, Candles
-	router.HandleFunc("/api/pairs", h.GetTradingPairsHandler).Methods("GET")
-	router.HandleFunc("/api/candles/{symbol}", h.GetCandlesHandler).Methods("GET")
+	router.HandleFunc("/data/pairs", h.GetTradingPairsHandler).Methods("GET")
+	router.HandleFunc("/data/candles", h.GetCandlesHandler).Methods("GET")
 
 	// Static files - register last to avoid intercepting other routes.
 	fs := http.FileServer(http.Dir("./static"))
@@ -351,34 +352,107 @@ func (h *HTTPHandler) TransferFundsHandler(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// CheckWalletBalance returns the USDT balance for a specific wallet address
+// CheckWalletBalance retrieves the balance of a wallet address
 func (h *HTTPHandler) CheckWalletBalance(w http.ResponseWriter, r *http.Request) {
-	// Get wallet address from query parameter
-	walletAddress := r.URL.Query().Get("address")
-	if walletAddress == "" {
-		http.Error(w, "Missing required parameter: address", http.StatusBadRequest)
+	address := r.URL.Query().Get("address")
+	if address == "" {
+		http.Error(w, "Missing wallet address parameter", http.StatusBadRequest)
 		return
 	}
 
-	// Check if the wallet is valid
-	balance, err := h.walletService.CheckBalance(r.Context(), h.bscClient, walletAddress)
+	// Получаем конкретную реализацию WalletService для использования новых методов
+	walletService, ok := h.walletService.(*usecases.WalletService)
+	if !ok {
+		http.Error(w, "WalletService implementation does not support balance monitoring", http.StatusInternalServerError)
+		return
+	}
+
+	// Используем новый метод GetWalletBalance вместо старого CheckBalance
+	balance, err := walletService.GetWalletBalance(r.Context(), address)
 	if err != nil {
-		h.logger.Error("Error checking wallet balance", "error", err, "address", walletAddress)
-		http.Error(w, fmt.Sprintf("Failed to check balance: %v", err), http.StatusInternalServerError)
+		h.logger.Error("Failed to get wallet balance", "error", err, "address", address)
+		http.Error(w, fmt.Sprintf("Failed to get balance: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Format balance to show as USDT (divide by 10^18)
-	balanceFloat := new(big.Float).Quo(
-		new(big.Float).SetInt(balance),
-		new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)),
-	)
+	// Конвертируем значения в читаемые строки для ответа
+	bnbFloat := usecases.WeiToEther(balance.NativeBalance)
+	tokenFloat := usecases.WeiToEther(balance.TokenBalance)
 
-	// Return the balance
+	// Готовим ответ
+	response := struct {
+		Address           string `json:"address"`
+		TokenBalanceWei   string `json:"token_balance_wei"`
+		TokenBalanceEther string `json:"token_balance_ether"`
+		BNBBalanceWei     string `json:"bnb_balance_wei"`
+		BNBBalanceEther   string `json:"bnb_balance_ether"`
+		Status            string `json:"status"`
+		LastChecked       string `json:"last_checked"`
+	}{
+		Address:           balance.Address,
+		TokenBalanceWei:   balance.TokenBalance.String(),
+		TokenBalanceEther: tokenFloat.Text('f', 18),
+		BNBBalanceWei:     balance.NativeBalance.String(),
+		BNBBalanceEther:   bnbFloat.Text('f', 18),
+		Status:            string(balance.Status),
+		LastChecked:       balance.LastChecked.Format("2006-01-02 15:04:05"),
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"address":      walletAddress,
-		"balance_wei":  balance.String(),
-		"balance_usdt": balanceFloat.Text('f', 6), // Format to 6 decimal places
-	})
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error("Failed to encode balance response", "error", err)
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
+}
+
+// GetWalletBalancesHandler возвращает информацию о балансах всех отслеживаемых кошельков
+func (h *HTTPHandler) GetWalletBalancesHandler(w http.ResponseWriter, r *http.Request) {
+	// Получаем walletService как конкретную реализацию для доступа к методам мониторинга
+	walletService, ok := h.walletService.(*usecases.WalletService)
+	if !ok {
+		http.Error(w, "WalletService implementation does not support balance monitoring", http.StatusInternalServerError)
+		return
+	}
+
+	// Получаем балансы кошельков
+	balances, err := walletService.GetWalletBalances(r.Context())
+	if err != nil {
+		h.logger.Error("Failed to get wallet balances", "error", err)
+		http.Error(w, fmt.Sprintf("Failed to get wallet balances: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Преобразуем big.Int значения в читаемые строки для JSON
+	type balanceInfo struct {
+		Address           string `json:"address"`
+		TokenBalanceWei   string `json:"token_balance_wei"`
+		TokenBalanceEther string `json:"token_balance_ether"`
+		BNBBalanceWei     string `json:"bnb_balance_wei"`
+		BNBBalanceEther   string `json:"bnb_balance_ether"`
+		Status            string `json:"status"`
+		LastChecked       string `json:"last_checked"`
+	}
+
+	result := make(map[string]balanceInfo)
+	for addr, balance := range balances {
+		bnbFloat := usecases.WeiToEther(balance.NativeBalance)
+		tokenFloat := usecases.WeiToEther(balance.TokenBalance)
+
+		result[addr] = balanceInfo{
+			Address:           balance.Address,
+			TokenBalanceWei:   balance.TokenBalance.String(),
+			TokenBalanceEther: tokenFloat.Text('f', 18),
+			BNBBalanceWei:     balance.NativeBalance.String(),
+			BNBBalanceEther:   bnbFloat.Text('f', 18),
+			Status:            string(balance.Status),
+			LastChecked:       balance.LastChecked.Format("2006-01-02 15:04:05"),
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		h.logger.Error("Failed to encode wallet balances", "error", err)
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }

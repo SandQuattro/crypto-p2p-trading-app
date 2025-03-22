@@ -56,7 +56,7 @@ func GetUSDTContractAddress() string {
 	return MainnetUSDTAddress
 }
 
-// Константы для логирования
+// Параметры для логирования
 const (
 	// Статусы операций
 	StatusSuccess = "success"
@@ -78,6 +78,13 @@ const (
 	SpeedupGasMultiplier = 1.2              // Множитель для цены газа при ускорении
 	MaxPendingTxTime     = 5 * time.Minute  // Максимальное время ожидания транзакции
 	SpeedupCheckInterval = 30 * time.Second // Интервал проверки зависших транзакций
+
+	// Параметры мониторинга баланса
+	BalanceMonitorInterval        = 5 * time.Minute // Интервал проверки балансов кошельков
+	LowBalanceThresholdBNB        = "0.01"          // Порог низкого баланса BNB (в эфирных единицах)
+	CriticalBalanceThresholdBNB   = "0.005"         // Критический порог баланса BNB
+	LowBalanceThresholdToken      = "10.0"          // Порог низкого баланса токена
+	CriticalBalanceThresholdToken = "5.0"           // Критический порог баланса токена
 )
 
 // Структура для хранения данных о транзакциях для отслеживания
@@ -125,6 +132,10 @@ type WalletService struct {
 	pendingTxsByAddr map[common.Address]map[uint64]string // Карта адрес -> нонс -> хеш транзакции
 	pendingTxsMu     sync.RWMutex                         // Мьютекс для защиты карты транзакций
 
+	// Мониторинг балансов кошельков
+	walletBalances   map[string]*entities.WalletBalance // Карта адрес -> информация о балансе
+	walletBalancesMu sync.RWMutex                       // Мьютекс для защиты карты балансов
+
 	mu sync.Mutex
 }
 
@@ -159,6 +170,9 @@ func NewWalletService(
 		// Инициализация карт для отслеживания транзакций
 		pendingTxs:       make(map[string]*PendingTransaction),
 		pendingTxsByAddr: make(map[common.Address]map[uint64]string),
+
+		// Мониторинг балансов кошельков
+		walletBalances: make(map[string]*entities.WalletBalance),
 	}
 
 	// Load tracked wallets from database into memory cache
@@ -168,6 +182,9 @@ func NewWalletService(
 
 	// Запуск горутины для отслеживания и ускорения зависших транзакций
 	go ws.monitorPendingTransactions(context.Background())
+
+	// Запуск горутины для мониторинга балансов кошельков
+	go ws.monitorWalletBalances(context.Background())
 
 	return ws, nil
 }
@@ -1232,4 +1249,239 @@ func (bsc *WalletService) GenerateSeedPhrase(entropyBits int) (string, error) {
 	}
 
 	return mnemonic, nil
+}
+
+// monitorWalletBalances запускает периодическую проверку балансов кошельков
+func (bsc *WalletService) monitorWalletBalances(ctx context.Context) {
+	ticker := time.NewTicker(BalanceMonitorInterval)
+	defer ticker.Stop()
+
+	bsc.logger.Info("Starting wallet balance monitoring",
+		"interval", BalanceMonitorInterval.String())
+
+	// Выполняем первоначальную проверку балансов
+	if err := bsc.checkAllWalletBalances(ctx); err != nil {
+		bsc.logger.Error("Failed to perform initial wallet balance check", "error", err)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			bsc.logger.Info("Wallet balance monitoring stopped")
+			return
+		case <-ticker.C:
+			if err := bsc.checkAllWalletBalances(ctx); err != nil {
+				bsc.logger.Error("Failed to check wallet balances", "error", err)
+			}
+		}
+	}
+}
+
+// checkAllWalletBalances проверяет балансы всех отслеживаемых кошельков
+func (bsc *WalletService) checkAllWalletBalances(ctx context.Context) error {
+	// Создаем клиент для запросов к блокчейну
+	client, err := GetBSCClient(ctx, bsc.logger)
+	if err != nil {
+		return fmt.Errorf("failed to create BSC client: %w", err)
+	}
+	defer client.Close()
+
+	// Получаем все отслеживаемые кошельки
+	wallets, err := bsc.repo.GetAllTrackedWallets(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get tracked wallets: %w", err)
+	}
+
+	// Преобразуем пороги в big.Int для сравнения
+	lowBNBThreshold, _ := new(big.Float).SetString(LowBalanceThresholdBNB)
+	criticalBNBThreshold, _ := new(big.Float).SetString(CriticalBalanceThresholdBNB)
+	lowTokenThreshold, _ := new(big.Float).SetString(LowBalanceThresholdToken)
+	criticalTokenThreshold, _ := new(big.Float).SetString(CriticalBalanceThresholdToken)
+
+	// Преобразуем в Wei
+	lowBNBThresholdWei := EtherToWei(lowBNBThreshold)
+	criticalBNBThresholdWei := EtherToWei(criticalBNBThreshold)
+	lowTokenThresholdWei := EtherToWei(lowTokenThreshold)
+	criticalTokenThresholdWei := EtherToWei(criticalTokenThreshold)
+
+	// Проверяем баланс каждого кошелька
+	for _, wallet := range wallets {
+		address := wallet.Address
+		walletAddress := common.HexToAddress(address)
+
+		// Получаем баланс BNB
+		bnbBalance, err := client.BalanceAt(ctx, walletAddress, nil)
+		if err != nil {
+			bsc.logger.ErrorContext(ctx, "Failed to get BNB balance",
+				"address", address,
+				"error", err)
+			continue
+		}
+
+		// Получаем баланс токена (USDT)
+		tokenBalance, err := bsc.GetERC20TokenBalance(ctx, client, address)
+		if err != nil {
+			bsc.logger.ErrorContext(ctx, "Failed to get token balance",
+				"address", address,
+				"token", bsc.smartContractAddress,
+				"error", err)
+			// Продолжаем, даже если не смогли получить баланс токена
+			tokenBalance = big.NewInt(0)
+		}
+
+		// Определяем статус баланса
+		var status entities.BalanceStatus
+		if bnbBalance.Cmp(criticalBNBThresholdWei) <= 0 ||
+			tokenBalance.Cmp(criticalTokenThresholdWei) <= 0 {
+			status = entities.BalanceStatusCritical
+		} else if bnbBalance.Cmp(lowBNBThresholdWei) <= 0 ||
+			tokenBalance.Cmp(lowTokenThresholdWei) <= 0 {
+			status = entities.BalanceStatusLow
+		} else {
+			status = entities.BalanceStatusOK
+		}
+
+		// Сохраняем информацию о балансе
+		walletBalance := &entities.WalletBalance{
+			Address:       address,
+			TokenBalance:  tokenBalance,
+			NativeBalance: bnbBalance,
+			Status:        status,
+			LastChecked:   time.Now(),
+		}
+
+		// Проверяем, изменился ли статус баланса
+		bsc.walletBalancesMu.Lock()
+		prevBalance, exists := bsc.walletBalances[address]
+		bsc.walletBalances[address] = walletBalance
+		bsc.walletBalancesMu.Unlock()
+
+		// Логируем информацию о балансе
+		bnbFloat := WeiToEther(bnbBalance)
+		tokenFloat := WeiToEther(tokenBalance)
+
+		// Логируем информацию только при изменении статуса или первой проверке
+		if !exists || prevBalance.Status != status {
+			logLevel := slog.LevelInfo
+			if status == entities.BalanceStatusCritical {
+				logLevel = slog.LevelWarn
+			} else if status == entities.BalanceStatusLow {
+				logLevel = slog.LevelInfo
+			}
+
+			bsc.logger.Log(ctx, logLevel, "Wallet balance status",
+				"address", address,
+				"bnb_balance", bnbFloat.Text('f', 18),
+				"token_balance", tokenFloat.Text('f', 18),
+				"status", status,
+				"user_id", wallet.UserID)
+		} else {
+			// Для отладки, логируем на уровне Debug при отсутствии изменений
+			bsc.logger.DebugContext(ctx, "Wallet balance checked",
+				"address", address,
+				"bnb_balance", bnbFloat.Text('f', 18),
+				"token_balance", tokenFloat.Text('f', 18),
+				"status", status)
+		}
+	}
+
+	return nil
+}
+
+// GetWalletBalances возвращает информацию о балансах всех отслеживаемых кошельков
+func (bsc *WalletService) GetWalletBalances(ctx context.Context) (map[string]*entities.WalletBalance, error) {
+	// Обновляем балансы перед возвратом
+	if err := bsc.checkAllWalletBalances(ctx); err != nil {
+		return nil, fmt.Errorf("failed to update wallet balances: %w", err)
+	}
+
+	// Копируем карту балансов для возврата
+	bsc.walletBalancesMu.RLock()
+	defer bsc.walletBalancesMu.RUnlock()
+
+	balances := make(map[string]*entities.WalletBalance, len(bsc.walletBalances))
+	for addr, balance := range bsc.walletBalances {
+		balances[addr] = &entities.WalletBalance{
+			Address:       balance.Address,
+			TokenBalance:  new(big.Int).Set(balance.TokenBalance),
+			NativeBalance: new(big.Int).Set(balance.NativeBalance),
+			Status:        balance.Status,
+			LastChecked:   balance.LastChecked,
+		}
+	}
+
+	return balances, nil
+}
+
+// GetWalletBalance возвращает информацию о балансе конкретного кошелька
+func (bsc *WalletService) GetWalletBalance(ctx context.Context, address string) (*entities.WalletBalance, error) {
+	// Проверяем, отслеживается ли этот кошелек
+	tracked, err := bsc.IsOurWallet(ctx, address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check if wallet is tracked: %w", err)
+	}
+	if !tracked {
+		return nil, fmt.Errorf("wallet %s is not tracked", address)
+	}
+
+	// Создаем клиент для запросов к блокчейну
+	client, err := GetBSCClient(ctx, bsc.logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create BSC client: %w", err)
+	}
+	defer client.Close()
+
+	walletAddress := common.HexToAddress(address)
+
+	// Получаем баланс BNB
+	bnbBalance, err := client.BalanceAt(ctx, walletAddress, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get BNB balance: %w", err)
+	}
+
+	// Получаем баланс токена (USDT)
+	tokenBalance, err := bsc.GetERC20TokenBalance(ctx, client, address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get token balance: %w", err)
+	}
+
+	// Преобразуем пороги в big.Int для сравнения
+	lowBNBThreshold, _ := new(big.Float).SetString(LowBalanceThresholdBNB)
+	criticalBNBThreshold, _ := new(big.Float).SetString(CriticalBalanceThresholdBNB)
+	lowTokenThreshold, _ := new(big.Float).SetString(LowBalanceThresholdToken)
+	criticalTokenThreshold, _ := new(big.Float).SetString(CriticalBalanceThresholdToken)
+
+	// Преобразуем в Wei
+	lowBNBThresholdWei := EtherToWei(lowBNBThreshold)
+	criticalBNBThresholdWei := EtherToWei(criticalBNBThreshold)
+	lowTokenThresholdWei := EtherToWei(lowTokenThreshold)
+	criticalTokenThresholdWei := EtherToWei(criticalTokenThreshold)
+
+	// Определяем статус баланса
+	var status entities.BalanceStatus
+	if bnbBalance.Cmp(criticalBNBThresholdWei) <= 0 ||
+		tokenBalance.Cmp(criticalTokenThresholdWei) <= 0 {
+		status = entities.BalanceStatusCritical
+	} else if bnbBalance.Cmp(lowBNBThresholdWei) <= 0 ||
+		tokenBalance.Cmp(lowTokenThresholdWei) <= 0 {
+		status = entities.BalanceStatusLow
+	} else {
+		status = entities.BalanceStatusOK
+	}
+
+	// Создаем и возвращаем объект с информацией о балансе
+	walletBalance := &entities.WalletBalance{
+		Address:       address,
+		TokenBalance:  tokenBalance,
+		NativeBalance: bnbBalance,
+		Status:        status,
+		LastChecked:   time.Now(),
+	}
+
+	// Обновляем кэш балансов
+	bsc.walletBalancesMu.Lock()
+	bsc.walletBalances[address] = walletBalance
+	bsc.walletBalancesMu.Unlock()
+
+	return walletBalance, nil
 }

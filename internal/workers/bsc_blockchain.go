@@ -85,19 +85,18 @@ type TransactionService interface {
 
 // WalletService defines the interface for wallet operations.
 type WalletService interface {
-	GenerateSeedPhrase(entropyBits int) (string, error)
-	GenerateWalletForUser(ctx context.Context, userID int64) (int, string, error)
 	IsOurWallet(ctx context.Context, address string) (bool, error)
+	GenerateWalletForUser(ctx context.Context, userID int64) (int, string, error)
 	GetAllTrackedWalletsForUser(ctx context.Context, userID int64) ([]string, error)
 	GetWalletDetailsForUser(ctx context.Context, userID int64) ([]entities.WalletDetail, error)
 	GetERC20TokenBalance(ctx context.Context, client *ethclient.Client, walletAddress string) (*big.Int, error)
 	GetGasPrice(ctx context.Context, client *ethclient.Client) (*big.Int, error)
-	GetGasPriceWithPriority(ctx context.Context, client *ethclient.Client, priority string) (*big.Int, error)
 	TransferFunds(ctx context.Context, client *ethclient.Client, fromWalletID int, toAddress string, amount *big.Int) (string, error)
-	TransferFundsWithPriority(ctx context.Context, client *ethclient.Client, fromWalletID int, toAddress string, amount *big.Int, priority string) (string, error)
 	TransferAllBNB(ctx context.Context, toAddress, depositUserWalletAddress string, userID, index int) (string, error)
-	TransferAllBNBWithPriority(ctx context.Context, toAddress, depositUserWalletAddress string, userID, index int, priority string) (string, error)
-	CheckBalance(ctx context.Context, client *ethclient.Client, walletAddress string) (*big.Int, error)
+
+	// Методы мониторинга балансов
+	GetWalletBalances(ctx context.Context) (map[string]*entities.WalletBalance, error)
+	GetWalletBalance(ctx context.Context, address string) (*entities.WalletBalance, error)
 }
 
 const (
