@@ -7,6 +7,13 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
 }
 
+.app-container {
+  background-color: #1E222D;
+  color: white;
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
 .App-header {
   margin-bottom: 20px;
 }
@@ -364,7 +371,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: calc(100% - 40px);
-  /* Leave space for the copy button */
+  color: #fff;
   display: inline-block;
 }
 
@@ -505,4 +512,193 @@
 
 .orders-list-section {
   width: 100%;
+}
+
+/* Wallets Management */
+.wallets-management-container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.wallets-management-container h2 {
+  color: #fff;
+  margin-bottom: 20px;
+}
+
+.wallets-table-container {
+  overflow-x: auto;
+  margin-top: 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.wallets-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #fff;
+  table-layout: fixed;
+}
+
+.wallets-table th,
+.wallets-table td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid #3a3f48;
+  vertical-align: middle;
+  height: 60px;
+  box-sizing: border-box;
+}
+
+.wallets-table th {
+  background-color: #1e2227;
+  color: #aaa;
+  font-weight: 600;
+  padding-top: 15px;
+  padding-bottom: 15px;
+  white-space: nowrap;
+  position: relative;
+  overflow: visible;
+}
+
+.wallets-table tbody tr:hover {
+  background-color: #2c313a;
+}
+
+.wallet-address {
+  display: flex;
+  align-items: center;
+  min-width: 300px;
+  width: 100%;
+  padding: 8px 0;
+  box-sizing: border-box;
+}
+
+.address-text {
+  margin-right: 10px;
+  font-family: monospace;
+  font-size: 0.9rem;
+  flex-grow: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 40px);
+  color: #fff;
+  display: inline-block;
+}
+
+.copy-button {
+  background: none;
+  border: none;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 1rem;
+  flex-shrink: 0;
+  padding: 4px 8px;
+  width: 30px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.copy-button:hover {
+  color: #fff;
+}
+
+.refresh-balance-button {
+  background-color: #4a6fa5;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+}
+
+.refresh-balance-button:hover {
+  background-color: #3a5a80;
+}
+
+.refresh-all-button {
+  background-color: #4a6fa5;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+  margin-bottom: 20px;
+}
+
+.refresh-all-button:hover {
+  background-color: #3a5a80;
+}
+
+.last-updated {
+  color: #aaa;
+  font-size: 12px;
+  margin-top: 10px;
+  text-align: right;
+}
+
+.no-wallets {
+  color: #aaa;
+  text-align: center;
+  padding: 40px 0;
+  font-style: italic;
+}
+
+.loading {
+  padding: 20px;
+  text-align: center;
+  color: #aaa;
+}
+
+/* Wallets Page */
+.wallets-page {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.wallets-management-section {
+  width: 100%;
+}
+
+.header {
+  margin-bottom: 20px;
+  padding: 15px 0;
+  border-bottom: 1px solid #3a3f48;
+}
+
+.header h1 {
+  margin: 0;
+  color: #fff;
+  text-align: center;
+}
+
+.balance-cell {
+  font-family: monospace;
+  color: #4caf50;
+  font-weight: 500;
+  text-align: right;
+  padding-right: 25px;
+  font-size: 1.1em;
+}
+
+.user-id-cell {
+  font-weight: 500;
+  color: #ffeb3b;
+}
+
+.note-message {
+  margin-top: 15px;
+  padding: 10px;
+  background-color: rgba(255, 193, 7, 0.2);
+  border-left: 4px solid #ffc107;
+  color: #fff;
+  font-style: italic;
 }

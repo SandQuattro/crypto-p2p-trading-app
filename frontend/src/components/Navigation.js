@@ -16,6 +16,12 @@ const Navigation = ({ activeTab, onTabChange }) => {
             >
                 Orders Management
             </button>
+            <button
+                className={`nav-button ${activeTab === 'wallets' ? 'active' : ''}`}
+                onClick={() => onTabChange('wallets')}
+            >
+                Wallets Management
+            </button>
         </div>
     );
 };

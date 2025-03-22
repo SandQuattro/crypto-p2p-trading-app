@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -100,10 +101,23 @@ type WalletService interface {
 }
 
 const (
-	USDTContractAddress    = "0x55d398326f99059fF775485246999027B3197955" // USDT BEP-20 контракт
-	subscriptionRetryDelay = 10 * time.Second                             // Delay before retrying subscription
-	maxConcurrentChecks    = 100                                          // Максимальное количество одновременных проверок подтверждений
+	subscriptionRetryDelay = 10 * time.Second // Delay before retrying subscription
+	maxConcurrentChecks    = 100              // Максимальное количество одновременных проверок подтверждений
 )
+
+// GetContractAddress returns the appropriate contract address based on mode
+func GetContractAddress() string {
+	// Import the IsBlockchainDebugMode function from usecases package
+	debugMode := os.Getenv("BLOCKCHAIN_DEBUG_MODE")
+	if strings.ToLower(debugMode) == "true" || strings.ToLower(debugMode) == "1" {
+		return "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd" // USDT on BSC Testnet
+	}
+	return "0x55d398326f99059fF775485246999027B3197955" // USDT on BSC Mainnet
+}
+
+// USDTContractAddress returns the appropriate USDT contract address based on mode
+// This variable is kept for backward compatibility
+var USDTContractAddress = GetContractAddress()
 
 // Define the ERC-20 transfer method signature.
 var (

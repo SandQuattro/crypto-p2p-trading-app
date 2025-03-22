@@ -21,6 +21,14 @@ type WalletDetail struct {
 	Address string `json:"address"`
 }
 
+// WalletDetailExtended represents wallet information with ID, address, user ID and creation date
+type WalletDetailExtended struct {
+	ID        int64     `json:"id"`
+	UserID    int       `json:"user_id"`
+	Address   string    `json:"address"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // BalanceStatus represents the status of a wallet balance
 type BalanceStatus string
 

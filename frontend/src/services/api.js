@@ -69,6 +69,17 @@ export const getWalletDetails = async (userId) => {
   }
 };
 
+// Get extended wallet details with creation date
+export const getWalletDetailsExtended = async (userId) => {
+  try {
+    const response = await axios.get(`${BASE_URL}/wallets/extended?user_id=${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching extended wallet details for user ${userId}:`, error);
+    throw error;
+  }
+};
+
 // Get wallet transactions
 export const getWalletTransactions = async (walletAddress) => {
   try {
@@ -90,5 +101,27 @@ export const getTransactionIdForWallet = async (walletAddress) => {
   } catch (error) {
     console.error(`Error fetching transaction ID for wallet ${walletAddress}:`, error);
     return null;
+  }
+};
+
+// Get balances for all wallets
+export const getWalletBalances = async () => {
+  try {
+    const response = await axios.get(`${BASE_URL}/wallet/balances`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching wallet balances:', error);
+    throw error;
+  }
+};
+
+// Get balance for a specific wallet
+export const getWalletBalance = async (address) => {
+  try {
+    const response = await axios.get(`${BASE_URL}/wallet/balance?address=${address}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching balance for wallet ${address}:`, error);
+    throw error;
   }
 };

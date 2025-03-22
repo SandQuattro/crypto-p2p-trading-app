@@ -57,6 +57,7 @@ func (h *HTTPHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/wallet/balances", h.GetWalletBalancesHandler).Methods("GET")
 	router.HandleFunc("/wallet/details", h.GetWalletDetailsHandler).Methods("GET")
 	router.HandleFunc("/wallet/transfer", h.TransferFundsHandler).Methods("POST")
+	router.HandleFunc("/wallets/extended", h.GetWalletDetailsExtendedHandler).Methods("GET")
 
 	// Transactions
 	router.HandleFunc("/transactions/wallet", h.GetWalletTransactions).Methods("GET")
@@ -289,6 +290,39 @@ func (h *HTTPHandler) GetWalletDetailsHandler(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		h.logger.Error("Error getting wallet details", "error", err, "user_id", userID)
 		http.Error(w, fmt.Sprintf("Failed to retrieve wallet details: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(walletDetails)
+}
+
+// GetWalletDetailsExtendedHandler returns extended wallet details including creation date
+func (h *HTTPHandler) GetWalletDetailsExtendedHandler(w http.ResponseWriter, r *http.Request) {
+	userIDParam := r.URL.Query().Get("user_id")
+	if userIDParam == "" {
+		http.Error(w, "Missing required parameter: user_id", http.StatusBadRequest)
+		return
+	}
+
+	userID, err := strconv.ParseInt(userIDParam, 10, 64)
+	if err != nil {
+		h.logger.Error("Invalid user ID format", "error", err, "user_id", userIDParam)
+		http.Error(w, "Invalid user ID format", http.StatusBadRequest)
+		return
+	}
+
+	// Cast to WalletService to access the extended method
+	walletService, ok := h.walletService.(*usecases.WalletService)
+	if !ok {
+		http.Error(w, "WalletService implementation does not support extended details", http.StatusInternalServerError)
+		return
+	}
+
+	walletDetails, err := walletService.GetWalletDetailsExtendedForUser(r.Context(), userID)
+	if err != nil {
+		h.logger.Error("Error getting extended wallet details", "error", err, "user_id", userID)
+		http.Error(w, fmt.Sprintf("Failed to retrieve extended wallet details: %v", err), http.StatusInternalServerError)
 		return
 	}
 

@@ -16,7 +16,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 
 	"github.com/google/uuid"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/workers"
 
 	"golang.org/x/exp/maps"
 
@@ -323,6 +322,26 @@ func (bsc *WalletService) GetWalletDetailsForUser(ctx context.Context, userID in
 	return walletDetails, nil
 }
 
+// GetWalletDetailsExtendedForUser retrieves extended wallet details including creation date
+func (bsc *WalletService) GetWalletDetailsExtendedForUser(ctx context.Context, userID int64) ([]entities.WalletDetailExtended, error) {
+	wallets, err := bsc.repo.GetAllTrackedWalletsForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	var walletDetails []entities.WalletDetailExtended
+	for _, wallet := range wallets {
+		walletDetails = append(walletDetails, entities.WalletDetailExtended{
+			ID:        int64(wallet.ID),
+			UserID:    wallet.UserID,
+			Address:   wallet.Address,
+			CreatedAt: wallet.CreatedAt,
+		})
+	}
+
+	return walletDetails, nil
+}
+
 // GetERC20TokenBalance retrieves the balance of ERC20 token for an address
 func (bsc *WalletService) GetERC20TokenBalance(ctx context.Context, client *ethclient.Client, walletAddress string) (*big.Int, error) {
 	tokenAddr := common.HexToAddress(bsc.smartContractAddress)
@@ -598,7 +617,7 @@ func (bsc *WalletService) TransferFundsWithPriority(ctx context.Context, client 
 
 	// Create token transfer data
 	// USDT contract address on BSC
-	tokenAddress := common.HexToAddress(workers.USDTContractAddress)
+	tokenAddress := common.HexToAddress(GetUSDTContractAddress())
 
 	// Create ERC20 transfer data
 	data := CreateERC20TransferData(toAddress, amount)
@@ -652,7 +671,7 @@ func (bsc *WalletService) TransferFundsWithPriority(ctx context.Context, client 
 		"tx_id", txID,
 		"tx_hash", txHash,
 		"token_amount", amount.String(),
-		"token_address", workers.USDTContractAddress,
+		"token_address", GetUSDTContractAddress(),
 		"status", StatusSuccess,
 		"duration", time.Since(startTime).String())
 

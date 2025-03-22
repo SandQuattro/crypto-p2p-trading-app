@@ -93,7 +93,7 @@ const OrdersList = ({ userId, refreshTrigger }) => {
     const truncateAddress = (address) => {
         if (!address || address === "Address unavailable") return address;
 
-        // Keep first 6 and last 4 characters, add ellipsis in the middle
+        // Keep first 15 and last 15 characters, add ellipsis in the middle
         const start = address.substring(0, 15);
         const end = address.substring(address.length - 15);
         return `${start}...${end}`;

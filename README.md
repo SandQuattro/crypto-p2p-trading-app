@@ -26,23 +26,25 @@ Here's a comprehensive guide to test your cryptocurrency order processing system
 
 ## 1. Get Test BNB from a BSC Testnet Faucet
 
-1. Go to the BNB Smart Chain Testnet Faucet: https://testnet.bnbchain.org/faucet-smart
+1. Go to the BNB Smart Chain Testnet Faucet: <https://testnet.bnbchain.org/faucet-smart>
 2. Enter your wallet address: `0x`
 3. Solve the captcha and click "Give me BNB"
 4. The faucet will send you some test BNB (usually 0.1 to 1 BNB)
 
 Alternative faucets if the official one isn't working:
-- https://faucet.quicknode.com/bnb-chain/bnb-testnet
-- https://testnet.binance.org/faucet-smart
+
+- <https://faucet.quicknode.com/bnb-chain/bnb-testnet>
+- <https://testnet.binance.org/faucet-smart>
 
 ## 2. Check Your Wallet Balance
 
 1. Check your wallet on the BSC Testnet Explorer:
-   - Go to https://testnet.bscscan.com/
+   - Go to <https://testnet.bscscan.com/>
    - Enter your wallet address `0x` in the search bar
    - You should see your balance and any transactions
 
 2. Create an endpoint in your app to check balance (optional):
+
    ```bash
    # Run this command to check the balance
    curl "http://localhost:8080/transactions/wallet?wallet=0x6C83946e958Db8A7F8a49981A412E5f59be27E3B"
@@ -51,12 +53,15 @@ Alternative faucets if the official one isn't working:
 ## 3. Send Test BNB to Another Wallet
 
 1. Create a second wallet for testing:
+
    ```bash
    curl -X POST "http://localhost:8080/generate_wallet?user_id=456"
    ```
+
    (Save the returned wallet address)
 
 2. Send some BNB from your first wallet to the second wallet:
+
    ```bash
    curl -X POST "http://localhost:8080/transfer" \
    -H "Content-Type: application/json" \
@@ -69,6 +74,7 @@ Alternative faucets if the official one isn't working:
    ```
 
 3. Check both wallets to confirm the transaction:
+
    ```bash
    curl "http://localhost:8080/transactions/wallet?wallet=0x6C83946e958Db8A7F8a49981A412E5f59be27E3B"
    curl "http://localhost:8080/transactions/wallet?wallet=ADDRESS_OF_SECOND_WALLET"
@@ -79,12 +85,13 @@ Alternative faucets if the official one isn't working:
 1. You'll need to interact with a testnet USDT contract
 2. The contract address is already configured in your app: `0x337610d27c682E347C9cD60BD4b3b107C9d34dDd`
 3. You can get test USDT by:
-   - Swapping some test BNB for USDT on PancakeSwap Testnet (https://pancake.kiemtienonline360.com/)
+   - Swapping some test BNB for USDT on PancakeSwap Testnet (<https://pancake.kiemtienonline360.com/>)
    - Or using a USDT test faucet if available
 
 ## 5. Transfer Test USDT Between Wallets
 
 1. After you have test USDT, transfer some to the second wallet:
+
    ```bash
    curl -X POST "http://localhost:8080/transfer" \
    -H "Content-Type: application/json" \
@@ -101,10 +108,11 @@ Alternative faucets if the official one isn't working:
 
 1. Check the transaction status on BSC Testnet Explorer:
    - When you execute a transfer, you'll get a transaction hash
-   - Go to https://testnet.bscscan.com/ and search for that hash
+   - Go to <https://testnet.bscscan.com/> and search for that hash
    - You can see details like status, block confirmations, gas used, etc.
 
 2. View your application logs to see transaction processing:
+
    ```bash
    docker logs crypto-p2p-trading-app | grep -i "transaction"
    ```
@@ -112,6 +120,7 @@ Alternative faucets if the official one isn't working:
 ## 7. Test Error Handling
 
 1. Try a transaction with insufficient funds:
+
    ```bash
    curl -X POST "http://localhost:8080/transfer" \
    -H "Content-Type: application/json" \
@@ -128,6 +137,7 @@ Alternative faucets if the official one isn't working:
 ## 8. Test Different Priority Levels
 
 1. Try sending with different priority levels (affects gas price):
+
    ```bash
    # Low priority
    curl -X POST "http://localhost:8080/transfer" \
@@ -153,6 +163,7 @@ Alternative faucets if the official one isn't working:
 ## 9. Verify All Operations in Debug Mode
 
 1. Check the logs to confirm that all operations are using testnet:
+
    ```bash
    docker logs crypto-p2p-trading-app | grep -i "testnet\|debug mode"
    ```
@@ -587,206 +598,184 @@ create index idx_wallets_user_id on public.wallets (user_id);
 
 ### API Endpoints
 
-#### Create Order
-
-```
-POST /create_order?user_id=USER_ID&amount=AMOUNT
-```
-
-**Response**:
-
-```json
-{
-  "status": "success",
-  "wallet": "0x123abc..."
-}
-```
-
-#### Generate Wallet
-
-```
-POST /generate_wallet?user_id=USER_ID
-```
-
-**Response**:
-
-```json
-{
-  "status": "success",
-  "wallet": "0x123abc..."
-}
-```
-
-#### Get User Orders
+#### Orders API
 
 ```
 GET /orders/user?user_id=USER_ID
 ```
 
+Get all orders for a specific user.
+
 **Response**:
 
 ```json
 [
   {
     "id": 1,
-    "user_id": "user123",
-    "wallet": "0x123abc...",
-    "amount": "100.0",
-    "status": "pending"
-  },
-  {
-    "id": 2,
-    "user_id": "user123",
-    "wallet": "0x123abc...",
-    "amount": "50.0",
-    "status": "completed"
+    "user_id": 1,
+    "wallet_id": 1,
+    "amount": "1",
+    "status": "completed",
+    "created_at": "2025-03-16T12:54:28.708956Z",
+    "updated_at": "2025-03-16T13:05:14.177722Z"
   }
 ]
 ```
 
-#### Get User Wallets
+```
+POST /create_order?user_id=USER_ID&amount=AMOUNT
+```
+
+Create a new order and generate a wallet for deposits.
+
+**Response**:
+
+```json
+{
+  "status": "success",
+  "wallet_id": 20,
+  "wallet": "0x8D68f1b6601EDe771759D69A03f76b1c20c90Bc0"
+}
+```
+
+#### Wallet API
+
+```
+POST /wallet/generate?user_id=USER_ID
+```
+
+Generate a new wallet for a user.
+
+**Response**:
+
+```json
+{
+  "status": "success",
+  "wallet_id": 21,
+  "wallet": "0x123abc..."
+}
+```
 
 ```
 GET /wallets/user?user_id=USER_ID
 ```
 
+Get all wallets for a specific user.
+
 **Response**:
 
 ```json
 [
   {
-    "address": "0x123abc..."
+    "address": "0x4b76685d6E8f5D7F70656a1e9F3D4B4017E9C33D"
   },
   {
-    "address": "0x456def..."
+    "address": "0x8982686bF4E455Bb02963aAAACCAe5CCDF849277"
   }
 ]
 ```
 
-#### Get Wallet Transactions
+```
+GET /wallets/ids?user_id=USER_ID
+```
+
+Get wallet details (IDs and addresses) for a user.
+
+```
+GET /wallet/balance?address=WALLET_ADDRESS
+```
+
+Check balance of a specific wallet.
+
+**Response**:
+
+```json
+{
+  "address": "0x8D68f1b6601EDe771759D69A03f76b1c20c90Bc0",
+  "token_balance_wei": "1000000000000000000",
+  "token_balance_ether": "1.000000000000000000",
+  "bnb_balance_wei": "0",
+  "bnb_balance_ether": "0.000000000000000000",
+  "status": "healthy",
+  "last_checked": "2025-03-22 20:57:15"
+}
+```
+
+```
+GET /wallet/balances
+```
+
+Get balances for all tracked wallets.
+
+```
+GET /wallet/details?user_id=USER_ID
+```
+
+Get detailed wallet information for a user.
+
+```
+POST /wallet/transfer?wallet_id=WALLET_ID&to_address=TO_ADDRESS&amount=AMOUNT
+```
+
+Transfer funds from a wallet to another address.
+
+```
+GET /wallets/extended?user_id=USER_ID
+```
+
+Get extended wallet details including creation date.
+
+#### Transactions API
 
 ```
 GET /transactions/wallet?wallet=WALLET_ADDRESS
 ```
 
+Get all transactions for a specific wallet.
+
 **Response**:
 
 ```json
 [
   {
-    "id": 1,
-    "tx_hash": "0xabc123...",
-    "wallet": "0x123abc...",
-    "amount": "100.0",
-    "block_number": 12345678,
+    "id": 4,
+    "tx_hash": "0x2694fa69e8439c026ed85104d61132f5afb090976000acd86abd9eb76f8c45b2",
+    "wallet_address": "0x8D68f1b6601EDe771759D69A03f76b1c20c90Bc0",
+    "amount": "1000000000000000000",
+    "block_number": 47698446,
     "confirmed": true,
-    "created_at": "2023-03-15T12:34:56Z"
+    "processed": true,
+    "created_at": "2025-03-22T20:57:15.985845Z",
+    "updated_at": "2025-03-22T20:57:58.274269Z"
   }
 ]
 ```
 
-### Future API Enhancements
-
-In future updates, the wallet management API will be enhanced to include:
-
-1. Wallet indices in responses
-2. Creation timestamps for wallets
-3. Additional wallet metadata
-4. Pagination for large wallet collections
-
-### Planned API Endpoints
-
-The following API endpoints are planned for future implementation to support the enhanced wallet management system:
-
-#### Get User Wallets (Planned)
+#### Trading API
 
 ```
-
-### Database Setup
-
-The application uses PostgreSQL for storing order data. The database is automatically set up when running with Docker:
-
-1. PostgreSQL database runs on port 5432
-2. PgAdmin web interface is available at <http://localhost:5050> (login: <admin@admin.com> / password: admin)
-3. Database migrations are automatically applied on application startup
-
-#### Manual Database Setup
-
-If you're not using Docker, you'll need to set up PostgreSQL manually:
-
-1. Install PostgreSQL on your system
-2. Create a database named `exchange`
-3. Set the `DATABASE_URL` environment variable:
-
-   ```bash
-   export DATABASE_URL="postgres://username:password@localhost:5432/exchange?sslmode=disable"
-   ```
-
-#### Database Migrations
-
-The application uses golang-migrate for database migrations. Migrations are stored in the `migrations` directory and are automatically applied when the application starts.
-
-To manually run migrations:
-
-```bash
-# Install golang-migrate CLI
-go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-
-# Run migrations
-migrate -path ./migrations -database "${DATABASE_URL}" up
+GET /data/pairs
 ```
 
-To create a new migration:
-
-```bash
-migrate create -ext sql -dir ./migrations -seq migration_name
-```
-
-### Transaction Tracking
-
-The application tracks blockchain transactions for generated wallets:
-
-1. When a user creates an order, they receive a unique wallet address.
-2. The system monitors the blockchain for incoming transactions to these wallets.
-3. When a transaction is detected, it's recorded in the database and monitored for confirmations.
-4. Once a transaction has enough confirmations, it's marked as confirmed and processed.
-5. During processing, the system updates the status of any pending orders associated with the wallet.
-
-You can view transactions for a specific wallet using the API:
+Get list of trading pairs with current prices and changes.
 
 ```
-GET /transactions/wallet?wallet=0x123...
+GET /data/candles/{symbol}
 ```
 
-### Handling Mismatched Transaction Amounts
+Get candle data for a specific trading pair.
 
-The system handles cases where the transaction amount doesn't exactly match the order amount:
+### Transaction Monitoring
 
-1. **Insufficient Amount**: If a user sends less than the order amount:
-   - The transaction is detected and recorded in the database
-   - The transaction is confirmed after receiving the required confirmations
-   - The order remains in "pending" status, waiting for additional funds
-   - No partial completion is currently supported
+The application monitors the blockchain for incoming transactions using WebSocket subscriptions:
 
-2. **Excess Amount**: If a user sends more than the order amount:
-   - The transaction is detected, recorded, and confirmed
-   - The order is marked as "completed"
-   - Excess funds remain in the wallet but are not automatically applied to other orders
-   - The system does not currently provide automatic refunds for excess amounts
-
-This behavior is controlled by the amount comparison logic in the order processing system, which only completes an order when the received amount is greater than or equal to the order amount.
-
-### Blockchain Monitoring
-
-The application monitors the blockchain for incoming transactions using a polling approach:
-
-1. The system polls for new blocks every 5 seconds
-2. When new blocks are detected, each block is processed to find relevant transactions
+1. The system subscribes to new blocks and token transfer events on the blockchain
+2. When token transfer events are detected, they are filtered to find transactions to system-generated wallets
 3. For USDT transfers to system-generated wallets, transactions are recorded in the database
 4. After a transaction receives the required number of confirmations, it's marked as confirmed
 5. Confirmed transactions are processed to update order statuses
 
-This approach ensures reliable transaction monitoring even when using public RPC endpoints that don't support WebSocket subscriptions.
+This WebSocket-based approach provides real-time transaction monitoring with lower latency than the previous polling method, ensuring that user deposits are detected and processed quickly.
 
 # Crypto P2P Trading
 

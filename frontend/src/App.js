@@ -4,6 +4,7 @@ import PairSelector from './components/PairSelector';
 import PriceDisplay from './components/PriceDisplay';
 import Navigation from './components/Navigation';
 import OrdersPage from './components/OrdersPage';
+import WalletsPage from './components/WalletsPage';
 import {fetchTradingPairs} from './services/api';
 import './App.css';
 
@@ -130,7 +131,9 @@ function App() {
         <Navigation activeTab={activeTab} onTabChange={handleTabChange} />
       </header>
 
-      {activeTab === 'trading' ? renderTradingView() : <OrdersPage />}
+      {activeTab === 'trading' ? renderTradingView()
+        : activeTab === 'orders' ? <OrdersPage />
+          : <WalletsPage />}
     </div>
   );
 }
