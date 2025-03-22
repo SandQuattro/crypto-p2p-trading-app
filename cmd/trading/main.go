@@ -91,7 +91,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bscBlockchainProcessor := workers.NewBinanceSmartChain(logger, config, transactionService, walletService)
+	// Initialize and run workers
+	initAndRunWorkers(ctx, logger, config, orderService, transactionService, walletService)
 
 	// create gRPC clients
 	bscClient, err := usecases.GetBSCClient(ctx, logger)
@@ -141,11 +142,6 @@ func main() {
 		}
 	}()
 
-	// Start blockchain subscription in a goroutine
-	go func() {
-		bscBlockchainProcessor.SubscribeToTransactions(ctx, config.RPCURL)
-	}()
-
 	// Set up graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -162,4 +158,38 @@ func main() {
 	}
 
 	logger.Info("Server exited properly")
+}
+
+func initAndRunWorkers(
+	ctx context.Context,
+	logger *slog.Logger,
+	config *cfg.Config,
+	orderService *usecases.OrderService,
+	transactionService *usecases.TransactionServiceImpl,
+	walletService *usecases.WalletService,
+) {
+	// Initialize blockchain processor
+	bscBlockchainProcessor := workers.NewBinanceSmartChain(logger, config, transactionService, walletService)
+
+	// Initialize order cleaner worker with 30 minutes expiration time and 5 minutes cleanup interval
+	orderCleaner := workers.NewOrderCleaner(
+		logger,
+		orderService,
+		30*time.Minute, // Orders older than 30 minutes will be removed
+		5*time.Minute,  // Cleanup runs every 5 minutes
+	)
+
+	// Start blockchain subscription in a goroutine
+	go func() {
+		logger.Info("Starting blockchain monitoring worker")
+		bscBlockchainProcessor.SubscribeToTransactions(ctx, config.RPCURL)
+	}()
+
+	// Start order cleaner worker in a goroutine
+	go func() {
+		logger.Info("Starting order cleaner worker")
+		orderCleaner.Start(ctx)
+	}()
+
+	logger.Info("All workers initialized and started")
 }

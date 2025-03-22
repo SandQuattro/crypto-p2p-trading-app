@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"time"
 
 	tx "github.com/Thiht/transactor/pgx"
 	"github.com/jackc/pgx/v5"
@@ -108,4 +109,25 @@ func (r *OrdersRepository) UpdateOrderStatus(ctx context.Context, walletID int, 
 	}
 
 	return nil
+}
+
+func (r *OrdersRepository) RemoveOldOrders(ctx context.Context, olderThan time.Duration) (int64, error) {
+	// Calculate the cutoff time (current time - duration)
+	cutoffTime := time.Now().Add(-olderThan)
+
+	// Delete orders that are older than the cutoff time and still have 'pending' status
+	result, err := r.db(ctx).Exec(ctx,
+		"DELETE FROM orders WHERE status = 'pending' AND created_at < $1",
+		cutoffTime)
+
+	if err != nil {
+		return 0, fmt.Errorf("failed to remove old orders: %w", err)
+	}
+
+	// Get the number of deleted rows
+	deletedCount := result.RowsAffected()
+
+	r.logger.Info("Removed old pending orders", "count", deletedCount, "older_than", olderThan.String())
+
+	return deletedCount, nil
 }
