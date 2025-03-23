@@ -55,7 +55,7 @@ Alternative faucets if the official one isn't working:
 1. Create a second wallet for testing:
 
    ```bash
-   curl -X POST "http://localhost:8080/generate_wallet?user_id=456"
+   curl -X POST "http://localhost:8080/wallet/generate?user_id=456"
    ```
 
    (Save the returned wallet address)
@@ -63,7 +63,7 @@ Alternative faucets if the official one isn't working:
 2. Send some BNB from your first wallet to the second wallet:
 
    ```bash
-   curl -X POST "http://localhost:8080/transfer" \
+   curl -X POST "http://localhost:8080/wallet/transfer" \
    -H "Content-Type: application/json" \
    -d '{
      "from_wallet_id": 17,
@@ -93,7 +93,7 @@ Alternative faucets if the official one isn't working:
 1. After you have test USDT, transfer some to the second wallet:
 
    ```bash
-   curl -X POST "http://localhost:8080/transfer" \
+   curl -X POST "http://localhost:8080/wallet/transfer" \
    -H "Content-Type: application/json" \
    -d '{
      "from_wallet_id": 17,
@@ -122,7 +122,7 @@ Alternative faucets if the official one isn't working:
 1. Try a transaction with insufficient funds:
 
    ```bash
-   curl -X POST "http://localhost:8080/transfer" \
+   curl -X POST "http://localhost:8080/wallet/transfer" \
    -H "Content-Type: application/json" \
    -d '{
      "from_wallet_id": 17,
@@ -140,7 +140,7 @@ Alternative faucets if the official one isn't working:
 
    ```bash
    # Low priority
-   curl -X POST "http://localhost:8080/transfer" \
+   curl -X POST "http://localhost:8080/wallet/transfer" \
    -H "Content-Type: application/json" \
    -d '{
      "from_wallet_id": 17,
@@ -150,7 +150,7 @@ Alternative faucets if the official one isn't working:
    }'
    
    # High priority
-   curl -X POST "http://localhost:8080/transfer" \
+   curl -X POST "http://localhost:8080/wallet/transfer" \
    -H "Content-Type: application/json" \
    -d '{
      "from_wallet_id": 17,

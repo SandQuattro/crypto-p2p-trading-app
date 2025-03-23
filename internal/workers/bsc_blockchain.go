@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
-	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/shared"
 
 	"github.com/google/uuid"
 	"github.com/sand/crypto-p2p-trading-app/backend/config"
@@ -60,12 +61,25 @@ const (
 )
 
 // BSC WebSocket endpoints
-var bscWSEndpoints = []string{
-	"wss://bsc-ws-node.nariox.org:443",
-	"wss://bsc.getblock.io/mainnet/",
-	"wss://bsc-mainnet.nodereal.io/ws",
-	"wss://rpc.ankr.com/bsc/ws",
-	"wss://bsc.publicnode.com",
+func GetBSCWebSocketEndpoints() []string {
+	if shared.IsBlockchainDebugMode() {
+		// Testnet WebSocket endpoints for debug/test mode
+		return []string{
+			"wss://bsc-testnet.publicnode.com",
+			"wss://bsc-testnet.nodereal.io/ws",
+			"wss://data-seed-prebsc-1-s1.binance.org:8545/ws",
+			"wss://data-seed-prebsc-2-s1.binance.org:8545/ws",
+			"wss://data-seed-prebsc-1-s2.binance.org:8545/ws",
+		}
+	}
+	// Mainnet WebSocket endpoints for production
+	return []string{
+		"wss://bsc-ws-node.nariox.org:443",
+		"wss://bsc.getblock.io/mainnet/",
+		"wss://bsc-mainnet.nodereal.io/ws",
+		"wss://rpc.ankr.com/bsc/ws",
+		"wss://bsc.publicnode.com",
+	}
 }
 
 // BSC HTTP endpoints
@@ -103,13 +117,16 @@ type WalletService interface {
 const (
 	subscriptionRetryDelay = 10 * time.Second // Delay before retrying subscription
 	maxConcurrentChecks    = 100              // Максимальное количество одновременных проверок подтверждений
+
+	// Block fetching retry configuration
+	maxBlockFetchRetries = 5                // Maximum number of retries for block fetching
+	initialRetryDelay    = 1 * time.Second  // Initial delay before retry
+	maxRetryDelay        = 10 * time.Second // Maximum delay between retries
 )
 
 // GetContractAddress returns the appropriate contract address based on mode
 func GetContractAddress() string {
-	// Import the IsBlockchainDebugMode function from usecases package
-	debugMode := os.Getenv("BLOCKCHAIN_DEBUG_MODE")
-	if strings.ToLower(debugMode) == "true" || strings.ToLower(debugMode) == "1" {
+	if shared.IsBlockchainDebugMode() {
 		return "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd" // USDT on BSC Testnet
 	}
 	return "0x55d398326f99059fF775485246999027B3197955" // USDT on BSC Mainnet
@@ -145,6 +162,17 @@ func NewBinanceSmartChain(
 	transactions TransactionService,
 	wallets WalletService,
 ) *BinanceSmartChain {
+	// Refresh the USDTContractAddress to ensure it's set correctly based on current environment
+	USDTContractAddress = GetContractAddress()
+
+	if shared.IsBlockchainDebugMode() {
+		logger.Info("Initializing BSC blockchain monitoring in DEBUG mode (BSC Testnet)",
+			"contract_address", USDTContractAddress)
+	} else {
+		logger.Info("Initializing BSC blockchain monitoring in PRODUCTION mode (BSC Mainnet)",
+			"contract_address", USDTContractAddress)
+	}
+
 	return &BinanceSmartChain{
 		logger:                logger,
 		config:                config,
@@ -187,7 +215,7 @@ func (bsc *BinanceSmartChain) subscribeViaWebsocket(ctx context.Context) error {
 
 	bsc.logger.InfoContext(ctx, "Attempting to connect via WebSocket")
 
-	for _, endpoint := range bscWSEndpoints {
+	for _, endpoint := range GetBSCWebSocketEndpoints() {
 		bsc.logger.InfoContext(ctx, "Trying WebSocket endpoint", "endpoint", endpoint)
 
 		// Создаем RPC клиент с WebSocket соединением
@@ -343,27 +371,87 @@ func (bsc *BinanceSmartChain) processBlockByNumber(ctx context.Context, client *
 // processBlockHeader обрабатывает заголовок блока
 func (bsc *BinanceSmartChain) processBlockHeader(ctx context.Context, client *ethclient.Client, header *types.Header) error {
 	// Добавляем механизм повторных попыток для случаев, когда блок еще не доступен
-	maxRetries := 3
-	retryDelay := 500 * time.Millisecond
+	maxRetries := maxBlockFetchRetries
+	retryDelay := initialRetryDelay
 	startTime := time.Now() // Добавляем измерение времени
+	blockNumber := header.Number.Uint64()
+
+	// Fallback clients to use when primary client fails
+	var fallbackClient *ethclient.Client
+	var fallbackEndpoint string
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// On the third attempt, try with a different RPC endpoint
+		currentClient := client
+		if attempt == 3 && fallbackClient == nil {
+			// Choose a fallback endpoint based on debug mode
+			if shared.IsBlockchainDebugMode() {
+				// Testnet fallback endpoint
+				fallbackEndpoint = "https://data-seed-prebsc-2-s3.binance.org:8545"
+			} else {
+				// Mainnet fallback endpoint
+				fallbackEndpoint = "https://bsc-dataseed2.binance.org"
+			}
+
+			var err error
+			fallbackClient, err = ethclient.Dial(fallbackEndpoint)
+			if err != nil {
+				bsc.logger.WarnContext(ctx, "Failed to create fallback client",
+					"endpoint", fallbackEndpoint,
+					"error", err)
+			} else {
+				bsc.logger.InfoContext(ctx, "Created fallback client",
+					"endpoint", fallbackEndpoint)
+				currentClient = fallbackClient
+			}
+		} else if attempt > 3 && fallbackClient != nil {
+			currentClient = fallbackClient
+		}
+
 		// Получаем полные данные блока по хешу заголовка
-		block, err := client.BlockByHash(ctx, header.Hash())
+		block, err := currentClient.BlockByHash(ctx, header.Hash())
 		if err == nil {
+			// If successful with fallback client, log it
+			if currentClient != client {
+				bsc.logger.InfoContext(ctx, "Successfully retrieved block with fallback client",
+					"endpoint", fallbackEndpoint,
+					"block_number", blockNumber,
+					"attempt", attempt)
+			}
 			// Блок успешно получен, обрабатываем его
-			return bsc.processBlock(ctx, client, block.Header())
+			return bsc.processBlock(ctx, currentClient, block.Header())
 		}
 
 		// Проверяем, является ли ошибка "not found"
 		if strings.Contains(err.Error(), "not found") {
+			// Try alternative method - get block by number as fallback
+			if attempt == 2 || attempt == 4 { // On 2nd and 4th attempts, try by number instead
+				bsc.logger.InfoContext(ctx, "Trying to get block by number instead of hash",
+					"block_number", blockNumber,
+					"block_hash", header.Hash().Hex(),
+					"attempt", attempt)
+
+				blockByNumber, errByNumber := currentClient.BlockByNumber(ctx, header.Number)
+				if errByNumber == nil {
+					// Block successfully retrieved by number
+					bsc.logger.InfoContext(ctx, "Successfully retrieved block by number",
+						"block_number", blockNumber,
+						"duration", time.Since(startTime).String())
+					return bsc.processBlock(ctx, currentClient, blockByNumber.Header())
+				}
+
+				bsc.logger.WarnContext(ctx, "Failed to get block by number too",
+					"block_number", blockNumber,
+					"error", errByNumber)
+			}
+
 			if attempt < maxRetries {
-				// bsc.logger.InfoContext(ctx, "Block not available yet by hash, retrying",
-				//	"block_hash", header.Hash().Hex(),
-				//	"block", header.Number.Uint64(),
-				//	"attempt", attempt,
-				//	"max_retries", maxRetries,
-				//	"retry_delay", retryDelay)
+				bsc.logger.InfoContext(ctx, "Block not available yet, retrying",
+					"block_hash", header.Hash().Hex(),
+					"block", blockNumber,
+					"attempt", attempt,
+					"max_retries", maxRetries,
+					"retry_delay", retryDelay)
 
 				// Ждем перед следующей попыткой
 				select {
@@ -372,6 +460,10 @@ func (bsc *BinanceSmartChain) processBlockHeader(ctx context.Context, client *et
 				case <-time.After(retryDelay):
 					// Увеличиваем задержку для каждой следующей попытки
 					retryDelay = retryDelay * 2
+					// Ensure we don't exceed maximum delay
+					if retryDelay > maxRetryDelay {
+						retryDelay = maxRetryDelay
+					}
 					continue
 				}
 			}
@@ -381,11 +473,16 @@ func (bsc *BinanceSmartChain) processBlockHeader(ctx context.Context, client *et
 		bsc.logger.ErrorContext(ctx, "Failed to get block",
 			"error", err,
 			"block_hash", header.Hash().Hex(),
-			"block", header.Number.Uint64(),
+			"block", blockNumber,
 			"attempts", attempt,
 			"duration", time.Since(startTime).String())
 
 		return err
+	}
+
+	// Cleanup fallback client if it was created
+	if fallbackClient != nil {
+		fallbackClient.Close()
 	}
 
 	// Этот код не должен выполниться, но компилятор требует возврат значения
@@ -409,6 +506,18 @@ func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclien
 
 	blockNumber := block.NumberU64()
 	blockHash := block.Hash().Hex()
+
+	var networkType string
+	if shared.IsBlockchainDebugMode() {
+		networkType = "Testnet"
+	} else {
+		networkType = "Mainnet"
+	}
+
+	bsc.logger.DebugContext(ctx, "Processing block",
+		"block_number", blockNumber,
+		"network", networkType,
+		"usdt_contract", USDTContractAddress)
 
 	logFields := LogFields{
 		BlockNumber: blockNumber,

@@ -5,10 +5,10 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/shared"
 	"log"
 	"log/slog"
 	"math/big"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -33,23 +33,14 @@ import (
 
 // Blockchain network configuration
 const (
-	// Environment variable to check for debug mode
-	EnvBlockchainDebugMode = "BLOCKCHAIN_DEBUG_MODE"
-
 	// Token contract addresses
 	MainnetUSDTAddress = "0x55d398326f99059fF775485246999027B3197955" // USDT on BSC Mainnet
 	TestnetUSDTAddress = "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd" // USDT on BSC Testnet
 )
 
-// IsBlockchainDebugMode checks if blockchain debug mode is enabled via environment variable
-func IsBlockchainDebugMode() bool {
-	debugMode := os.Getenv(EnvBlockchainDebugMode)
-	return strings.ToLower(debugMode) == "true" || strings.ToLower(debugMode) == "1"
-}
-
 // GetUSDTContractAddress returns the appropriate USDT contract address based on mode
 func GetUSDTContractAddress() string {
-	if IsBlockchainDebugMode() {
+	if shared.IsBlockchainDebugMode() {
 		return TestnetUSDTAddress
 	}
 	return MainnetUSDTAddress
@@ -148,7 +139,7 @@ func NewWalletService(
 	contractAddress := GetUSDTContractAddress()
 
 	// Log which mode we're operating in
-	if IsBlockchainDebugMode() {
+	if shared.IsBlockchainDebugMode() {
 		logger.Info("Wallet service initialized in DEBUG mode (using BSC Testnet)")
 	} else {
 		logger.Info("Wallet service initialized in PRODUCTION mode (using BSC Mainnet)")
@@ -887,7 +878,7 @@ func CreateMasterKey(seed string) *bip32.Key {
 // GetBSCClient connects to one of the BSC RPC endpoints
 func GetBSCClient(ctx context.Context, logger *slog.Logger) (*ethclient.Client, error) {
 	// Check if we're in debug/test mode
-	debugMode := IsBlockchainDebugMode()
+	debugMode := shared.IsBlockchainDebugMode()
 
 	// Список RPC эндпоинтов BSC (для резервирования)
 	var bscRpcEndpoints []string
