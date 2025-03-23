@@ -10,6 +10,19 @@ The application includes a complete order processing system for cryptocurrency t
 - We are monitoring blockchain, to see transactions to this wallet and order amount validation
 - When we see transaction to our deposit addresses, we know exactly, who did the transfer
 
+## Enhanced Blockchain Reliability
+
+The application includes several features to improve reliability when interacting with blockchain networks:
+
+- **Advanced Block Fetching Logic**: Robust mechanism to retrieve blocks with multiple fallback strategies
+- **Configurable Retry Parameters**: Customizable retry attempts (default: 5) and delay times (starting at 1 second)
+- **Smart Fallback Mechanism**: Alternates between retrieving blocks by hash and by number on specific retry attempts
+- **Multiple RPC Endpoints**: Seamless fallback to alternative BSC RPC endpoints when primary endpoint fails
+- **Exponential Backoff**: Increasing delay between retry attempts to handle temporary network congestion
+- **Detailed Logging**: Comprehensive logs for better monitoring and troubleshooting of blockchain interactions
+
+These enhancements ensure that the application can reliably process blockchain data even when facing network instability or API limitations from blockchain providers.
+
 # Step-by-Step Manual to Test the User Flow
 
 Here's a comprehensive guide to test your cryptocurrency order processing system with the enhanced wallet management features:
@@ -43,7 +56,7 @@ Alternative faucets if the official one isn't working:
    - Enter your wallet address `0x` in the search bar
    - You should see your balance and any transactions
 
-2. Create an endpoint in your app to check balance (optional):
+2. Check wallet balance:
 
    ```bash
    # Run this command to check the balance
@@ -52,7 +65,7 @@ Alternative faucets if the official one isn't working:
 
 ## 3. Send Test BNB to Another Wallet
 
-1. Create a second wallet for testing:
+1. We can use already created wallets for user 456, execute getting wallets for user or Create a second wallet for testing:
 
    ```bash
    curl -X POST "http://localhost:8080/wallet/generate?user_id=456"
@@ -116,6 +129,8 @@ Alternative faucets if the official one isn't working:
    ```bash
    docker logs crypto-p2p-trading-app | grep -i "transaction"
    ```
+
+3. Check logs for success transactions monitoring: log message is USDT Transfer to our wallet detected
 
 ## 7. Test Error Handling
 
@@ -443,6 +458,29 @@ Look for:
 - Transaction detection and processing
 - Order status updates
 
+### Monitor Blockchain Performance
+
+To verify the enhanced block processing reliability:
+
+```bash
+# Check for successful block retrievals
+docker logs crypto-p2p-trading-app | grep -i "Successfully retrieved block"
+
+# Examine block retrieval fallback patterns
+docker logs crypto-p2p-trading-app | grep -i "Created fallback client"
+
+# Monitor retry attempts
+docker logs crypto-p2p-trading-app | grep -i "Block not available yet, retrying"
+
+# Check for any block processing errors
+docker logs crypto-p2p-trading-app | grep -i "Failed to process block"
+
+# Verify USDT transfer detection
+docker logs crypto-p2p-trading-app | grep -i "USDT Transfer to our wallet detected"
+```
+
+These commands will help you assess the performance and reliability of the blockchain integration, particularly the enhanced block retrieval mechanisms.
+
 ### Check Database State
 
 If you have direct access to the PostgreSQL database:
@@ -487,6 +525,22 @@ If you have direct access to the PostgreSQL database:
 3. Check application logs for any errors in transaction processing
 4. Restart the application if necessary to trigger a recheck of pending transactions
 
+### Blockchain Connectivity Issues
+
+1. Check logs for "Block not available yet, retrying" messages to identify retrieval issues
+2. Verify your primary RPC endpoint is accessible and responding correctly
+3. Ensure that fallback endpoints are properly configured and accessible
+4. Adjust retry parameters if needed:
+
+   ```bash
+   # Increase max retries and initial delay
+   export MAX_BLOCK_RETRIES=7
+   export INITIAL_RETRY_DELAY=2000
+   ```
+
+5. Review logs for patterns to determine if issues are with specific blocks or a general connectivity problem
+6. If issues persist, consider adding additional fallback RPC endpoints
+
 ### Wallet Generation Issues
 
 1. Check application logs for errors during wallet generation
@@ -518,6 +572,9 @@ This step-by-step guide should help thoroughly test cryptocurrency order process
 - **Transaction Monitoring**: Real-time monitoring of blockchain transactions
 - **Order Management**: Create and track orders with status updates
 - **USDT Support**: Process BEP-20 USDT transactions on Binance Smart Chain
+- **Resilient Block Processing**: Enhanced reliability with smart retries and fallback mechanisms
+- **Multi-endpoint Fallback**: Automatic switching between multiple BSC RPC endpoints
+- **Configurable Network Parameters**: Easily adjustable settings for retry attempts and timeouts
 
 ### How It Works
 
@@ -537,7 +594,15 @@ This step-by-step guide should help thoroughly test cryptocurrency order process
    - For each block, it analyzes transactions to detect USDT transfers
    - When a transfer to a system-generated wallet is detected, the corresponding order is updated
 
-4. **Order Completion**:
+4. **Block Header Processing**:
+   - System retrieves block headers using a multi-tiered approach for reliability
+   - Initial attempts use the primary RPC endpoint with block hash
+   - On specific retry attempts, system tries alternative methods (block number, fallback endpoints)
+   - Retry parameters use exponential backoff to handle temporary network issues
+   - Comprehensive logs detail each step of the process for easier troubleshooting
+   - Custom retry parameters can be configured through environment variables
+
+5. **Order Completion**:
    - When sufficient funds are received, the order status is updated to 'completed'
    - Multiple orders can be processed for the same wallet address
 
@@ -554,6 +619,13 @@ WALLET_SEED=your secure seed phrase here
 
 # Database connection string
 DATABASE_URL=postgres://user:password@pgpool:5432/exchange
+
+# Block processing retry configuration
+MAX_BLOCK_RETRIES=5             # Maximum number of retry attempts for block retrieval (default: 5)
+INITIAL_RETRY_DELAY=1000        # Initial delay in milliseconds before first retry (default: 1000)
+FALLBACK_RPC_URL=https://data-seed-prebsc-2-s3.binance.org:8545/  # Fallback RPC endpoint URL
+FALLBACK_RETRY_ATTEMPTS=2,4     # Comma-separated list of retry attempts that should use fallback client
+BLOCK_NUMBER_RETRY_ATTEMPTS=2,4 # Comma-separated list of retry attempts that should retrieve by block number
 ```
 
 ### Database Schema

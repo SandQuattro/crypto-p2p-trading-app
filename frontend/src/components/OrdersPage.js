@@ -41,6 +41,8 @@ const OrdersPage = () => {
                     <option value="1">User 1</option>
                     <option value="2">User 2</option>
                     <option value="3">User 3</option>
+                    <option value="123">User 123</option>
+                    <option value="456">User 456</option>
                 </select>
             </div>
 
