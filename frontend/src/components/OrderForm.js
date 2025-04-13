@@ -3,7 +3,7 @@ import {createOrder} from '../services/api';
 import '../App.css';
 
 // Константа для срока действия заказа в часах
-const ORDER_EXPIRY_HOURS = 24;
+const ORDER_EXPIRY_HOURS = 3;
 
 const OrderForm = ({ onOrderCreated, selectedUserId, orderCreated }) => {
     const [userId, setUserId] = useState(selectedUserId || '1');

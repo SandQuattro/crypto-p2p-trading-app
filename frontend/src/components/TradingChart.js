@@ -78,7 +78,7 @@ const TradingChart = ({ symbol }) => {
           // Use optimized method to set data
           candleSeries.setData(formattedData);
 
-          // Set visible range to 3 hours (changed from 24 hours)
+          // Set visible range to 3 hours
           const lastTime = formattedData[formattedData.length - 1].time;
           const threeHoursAgo = lastTime - 3600 * 3; // 3600 seconds = 1 hour, * 3 = 3 hours
 

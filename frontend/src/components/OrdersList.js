@@ -110,11 +110,11 @@ const OrdersList = ({ userId, refreshTrigger }) => {
             });
     };
 
-    // Функция для расчета срока действия заказа (24 часа от создания)
+    // Функция для расчета срока действия заказа (3 часа от создания)
     const calculateExpiryDate = (createdAt) => {
         if (!createdAt) return '';
         const expiryDate = new Date(createdAt);
-        expiryDate.setHours(expiryDate.getHours() + 24); // 24 часа от времени создания
+        expiryDate.setHours(expiryDate.getHours() + 3); // 3 часа от времени создания
 
         return formatDate(expiryDate.toISOString());
     };
