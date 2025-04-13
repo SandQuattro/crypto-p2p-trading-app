@@ -1,5 +1,5 @@
 -- Таблица для результатов AML проверок
-CREATE TABLE aml_checks (
+CREATE TABLE IF NOT EXISTS aml_checks (
     id SERIAL PRIMARY KEY,
     transaction_hash VARCHAR(66) NOT NULL,
     wallet_address VARCHAR(42) NOT NULL,
@@ -15,10 +15,10 @@ CREATE TABLE aml_checks (
 );
 
 -- Индекс для быстрого поиска по хешу транзакции
-CREATE INDEX idx_aml_checks_tx_hash ON aml_checks(transaction_hash);
+CREATE INDEX IF NOT EXISTS idx_aml_checks_tx_hash ON aml_checks(transaction_hash);
 
 -- Таблица для информации о риске адресов
-CREATE TABLE address_risk_info (
+CREATE TABLE IF NOT EXISTS address_risk_info (
     address VARCHAR(42) PRIMARY KEY,
     risk_level VARCHAR(20) NOT NULL,
     risk_score FLOAT NOT NULL,
@@ -29,7 +29,7 @@ CREATE TABLE address_risk_info (
 );
 
 -- Таблица очереди транзакций для проверки
-CREATE TABLE aml_transaction_checks (
+CREATE TABLE IF NOT EXISTS aml_transaction_checks (
     tx_hash VARCHAR(66) PRIMARY KEY,
     wallet_address VARCHAR(42) NOT NULL,
     source_address VARCHAR(42) NOT NULL,
@@ -39,4 +39,4 @@ CREATE TABLE aml_transaction_checks (
 );
 
 -- Индекс для получения необработанных транзакций
-CREATE INDEX idx_aml_transaction_checks_processed ON aml_transaction_checks(processed, created_at); 
+CREATE INDEX IF NOT EXISTS idx_aml_transaction_checks_processed ON aml_transaction_checks(processed, created_at);
