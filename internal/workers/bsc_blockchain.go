@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sand/crypto-p2p-trading-app/backend/config"
+	amlEntities "github.com/sand/crypto-p2p-trading-app/backend/internal/aml/entities"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -96,6 +97,12 @@ type TransactionService interface {
 	RecordTransaction(ctx context.Context, txHash common.Hash, walletAddress string, amount *big.Int, blockNumber int64) error
 	ConfirmTransaction(ctx context.Context, txHash string) error
 	ProcessPendingTransactions(ctx context.Context) error
+	MarkTransactionAMLFlagged(ctx context.Context, txHash string) error
+}
+
+// AMLService определяет интерфейс для AML проверок
+type AMLService interface {
+	CheckTransaction(ctx context.Context, txHash common.Hash, sourceAddress, destinationAddress string, amount *big.Int) (*amlEntities.AMLCheckResult, error)
 }
 
 // WalletService defines the interface for wallet operations.
@@ -108,10 +115,19 @@ type WalletService interface {
 	GetGasPrice(ctx context.Context, client *ethclient.Client) (*big.Int, error)
 	TransferFunds(ctx context.Context, client *ethclient.Client, fromWalletID int, toAddress string, amount *big.Int) (string, error)
 	TransferAllBNB(ctx context.Context, toAddress, depositUserWalletAddress string, userID, index int) (string, error)
+	GetOrderIdForWallet(ctx context.Context, walletAddress string) (int, error)
 
 	// Методы мониторинга балансов
 	GetWalletBalances(ctx context.Context) (map[string]*entities.WalletBalance, error)
 	GetWalletBalance(ctx context.Context, address string) (*entities.WalletBalance, error)
+}
+
+// OrderService defines the interface for order operations.
+type OrderService interface {
+	MarkOrderForAMLReview(ctx context.Context, orderID int, notes string) error
+	RemoveOldOrders(ctx context.Context, olderThan time.Duration) (int64, error)
+	GetUserOrders(ctx context.Context, userID int) ([]entities.Order, error)
+	CreateOrder(ctx context.Context, userID, walletID int, amount string) error
 }
 
 const (
@@ -147,6 +163,8 @@ type BinanceSmartChain struct {
 
 	transactions TransactionService
 	wallets      WalletService
+	amlService   AMLService   // Добавляем сервис AML проверок
+	orders       OrderService // Добавляем сервис ордеров
 
 	// Семафор для ограничения одновременных проверок подтверждений
 	confirmationSemaphore chan struct{}
@@ -161,6 +179,8 @@ func NewBinanceSmartChain(
 	config *config.Config,
 	transactions TransactionService,
 	wallets WalletService,
+	amlService AMLService,
+	orders OrderService,
 ) *BinanceSmartChain {
 	// Refresh the USDTContractAddress to ensure it's set correctly based on current environment
 	USDTContractAddress = GetContractAddress()
@@ -178,6 +198,8 @@ func NewBinanceSmartChain(
 		config:                config,
 		transactions:          transactions,
 		wallets:               wallets,
+		amlService:            amlService,
+		orders:                orders,
 		confirmationSemaphore: make(chan struct{}, maxConcurrentChecks),
 	}
 }
@@ -597,6 +619,61 @@ func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclien
 							"amount", amount.String(),
 							"block_number", blockNumber,
 							"status", TxStatusPending)
+
+						// Выполняем AML проверку транзакции
+						if bsc.amlService != nil {
+							amlResult, amlErr := bsc.amlService.CheckTransaction(ctx, tx.Hash(), sender.Hex(), recipientAddr, amount)
+							if amlErr != nil {
+								bsc.logger.ErrorContext(ctx, "AML check failed",
+									"error", amlErr,
+									"tx_id", txID,
+									"tx_hash", txHash)
+								// Продолжаем обработку даже при ошибке AML проверки
+							} else {
+								bsc.logger.InfoContext(ctx, "AML check completed",
+									"tx_id", txID,
+									"tx_hash", txHash,
+									"risk_level", amlResult.RiskLevel,
+									"risk_score", amlResult.RiskScore,
+									"approved", amlResult.Approved)
+
+								// Если транзакция не одобрена по AML, отмечаем её в системе
+								if !amlResult.Approved {
+									bsc.logger.WarnContext(ctx, "Transaction flagged by AML check",
+										"tx_id", txID,
+										"tx_hash", txHash,
+										"risk_level", amlResult.RiskLevel,
+										"risk_source", amlResult.RiskSource,
+										"requires_review", amlResult.RequiresReview,
+										"notes", amlResult.Notes)
+
+									// Обновляем статус транзакции
+									err = bsc.transactions.MarkTransactionAMLFlagged(ctx, txHash)
+									if err != nil {
+										bsc.logger.ErrorContext(ctx, "Failed to mark transaction as AML flagged",
+											"error", err,
+											"tx_hash", txHash)
+									}
+
+									// Получаем и обновляем статус связанного ордера
+									if bsc.orders != nil {
+										orderID, err := bsc.wallets.GetOrderIdForWallet(ctx, recipientAddr)
+										if err != nil {
+											bsc.logger.ErrorContext(ctx, "Failed to get order for wallet",
+												"error", err,
+												"wallet", recipientAddr)
+										} else {
+											err = bsc.orders.MarkOrderForAMLReview(ctx, orderID, amlResult.Notes)
+											if err != nil {
+												bsc.logger.ErrorContext(ctx, "Failed to mark order for AML review",
+													"error", err,
+													"order_id", orderID)
+											}
+										}
+									}
+								}
+							}
+						}
 
 						// Record the transaction
 						if err = bsc.transactions.RecordTransaction(ctx, tx.Hash(), recipientAddr, amount, int64(blockNumber)); err != nil {

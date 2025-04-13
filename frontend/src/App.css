@@ -453,6 +453,9 @@
   max-width: 500px;
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
   overflow: hidden;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-header {
@@ -484,6 +487,52 @@
 
 .modal-content {
   padding: 20px;
+  overflow-y: auto;
+}
+
+/* Стили для полей ввода внутри модального окна */
+.modal-content .form-control {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid #3a3f48;
+  border-radius: 4px;
+  background-color: #1e2227;
+  color: #fff;
+  font-size: 1rem;
+}
+
+.modal-content .form-group {
+  margin-bottom: 15px;
+  width: 100%;
+}
+
+.modal-content .order-form {
+  width: 100%;
+  max-width: 100%;
+}
+
+.modal-footer {
+  border-top: 1px solid #3a3f48;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.close-button {
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.3s;
+}
+
+.close-button:hover {
+  background-color: #45a049;
 }
 
 /* Add button styles */
@@ -701,4 +750,89 @@
   border-left: 4px solid #ffc107;
   color: #fff;
   font-style: italic;
+}
+
+/* Payment information styles */
+.payment-info-container {
+  margin-top: 20px;
+  padding: 20px;
+  background-color: #1e2227;
+  border-radius: 8px;
+  border: 1px solid #3a3f48;
+}
+
+.wallet-address-container {
+  margin-bottom: 15px;
+}
+
+.wallet-address-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.payment-notice {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 15px;
+  padding: 15px;
+  border-radius: 8px;
+}
+
+.notice-icon {
+  flex-shrink: 0;
+  font-size: 1.5rem;
+  margin-right: 15px;
+}
+
+.notice-text {
+  color: #eee;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.payment-notice.warning {
+  background-color: rgba(255, 165, 0, 0.1);
+  border: 1px solid rgba(255, 165, 0, 0.3);
+}
+
+.payment-notice.success {
+  background-color: rgba(76, 175, 80, 0.1);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.payment-notice.expiry {
+  background-color: rgba(233, 30, 99, 0.1);
+  border: 1px solid rgba(233, 30, 99, 0.3);
+  margin-bottom: 0;
+}
+
+/* Стили для строк с pending статусом */
+.pending-order {
+  position: relative;
+  transition: background-color 0.3s;
+}
+
+.pending-order:hover {
+  background-color: #2a303c !important;
+}
+
+.payment-details-row td {
+  padding: 0 !important;
+  border-top: none !important;
+}
+
+.status-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.expand-toggle {
+  font-size: 12px;
+  color: #aaa;
+  cursor: pointer;
+  user-select: none;
 }

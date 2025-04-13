@@ -14,13 +14,16 @@ import (
 	"github.com/jackc/pgx/v5"
 	cfg "github.com/sand/crypto-p2p-trading-app/backend/config"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/mocked"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/repository"
+	repository "github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/repository"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/workers"
 	"github.com/sand/crypto-p2p-trading-app/backend/pkg/database"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/aml"
+	amlrepo "github.com/sand/crypto-p2p-trading-app/backend/internal/aml/repository"
+	amlservices "github.com/sand/crypto-p2p-trading-app/backend/internal/aml/services"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/handlers"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases"
 )
@@ -85,14 +88,17 @@ func main() {
 	orderService := usecases.NewOrderService(ordersRepository)
 	transactionService := usecases.NewTransactionService(transactionsRepository)
 
-	walletService, err := usecases.NewWalletService(logger, config.WalletSeed, transactionService, walletsRepository)
+	walletService, err := usecases.NewWalletService(logger, config.WalletSeed, transactionService, walletsRepository, orderService)
 	if err != nil {
 		logger.Error("Failed to create wallet service", "error", err)
 		log.Fatal(err)
 	}
 
+	// Инициализируем AML сервис
+	amlService := initAMLService(logger, config, pg)
+
 	// Initialize and run workers
-	initAndRunWorkers(ctx, logger, config, orderService, transactionService, walletService)
+	initAndRunWorkers(ctx, logger, config, orderService, transactionService, walletService, amlService)
 
 	// create gRPC clients
 	bscClient, err := usecases.GetBSCClient(ctx, logger)
@@ -160,6 +166,53 @@ func main() {
 	logger.Info("Server exited properly")
 }
 
+func initAMLService(logger *slog.Logger, config *cfg.Config, pg *database.Postgres) *aml.AMLService {
+	// Создаем AML репозиторий
+	amlRepository := amlrepo.NewAMLRepository(logger, pg)
+
+	// Инициализируем сервисы проверки
+	chainalysisService := amlservices.NewChainalysisService(
+		logger,
+		config.AML.ChainalysisAPIKey,
+		config.AML.ChainalysisAPIURL,
+	)
+
+	ellipticService := amlservices.NewEllipticService(
+		logger,
+		config.AML.EllipticAPIKey,
+		config.AML.EllipticAPIURL,
+	)
+
+	localAMLService := amlservices.NewLocalAMLService(
+		logger,
+		config.AML.TransactionThreshold,
+	)
+
+	amlbotService := amlservices.NewAMLBotService(
+		logger,
+		config.AML.AMLBotAPIKey,
+		config.AML.AMLBotAPIURL,
+	)
+
+	// Создаем основной AML сервис
+	amlService := aml.NewAMLService(
+		logger,
+		amlRepository,
+		chainalysisService,
+		ellipticService,
+		localAMLService,
+		amlbotService,
+	)
+
+	logger.Info("AML service initialized",
+		"chainalysis_enabled", chainalysisService.IsEnabled(),
+		"elliptic_enabled", ellipticService.IsEnabled(),
+		"amlbot_enabled", amlbotService.IsEnabled(),
+	)
+
+	return amlService
+}
+
 func initAndRunWorkers(
 	ctx context.Context,
 	logger *slog.Logger,
@@ -167,16 +220,17 @@ func initAndRunWorkers(
 	orderService *usecases.OrderService,
 	transactionService *usecases.TransactionServiceImpl,
 	walletService *usecases.WalletService,
+	amlService workers.AMLService,
 ) {
-	// Initialize blockchain processor
-	bscBlockchainProcessor := workers.NewBinanceSmartChain(logger, config, transactionService, walletService)
+	// Initialize blockchain processor с реальным AML сервисом
+	bscBlockchainProcessor := workers.NewBinanceSmartChain(logger, config, transactionService, walletService, amlService, orderService)
 
-	// Initialize order cleaner worker with 30 minutes expiration time and 5 minutes cleanup interval
+	// Initialize order cleaner worker with configuration from config
 	orderCleaner := workers.NewOrderCleaner(
 		logger,
 		orderService,
-		30*time.Minute, // Orders older than 30 minutes will be removed
-		5*time.Minute,  // Cleanup runs every 5 minutes
+		time.Duration(config.Workers.OrderExpiration)*time.Minute,      // Use OrderExpiration from config (in minutes)
+		time.Duration(config.Workers.OrderCleanupInterval)*time.Minute, // Use OrderCleanupInterval from config (in minutes)
 	)
 
 	// Start blockchain subscription in a goroutine

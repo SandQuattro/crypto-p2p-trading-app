@@ -13,6 +13,8 @@ type OrdersRepository interface {
 	InsertOrder(ctx context.Context, userID, walletID int, amount string) error
 	UpdateOrderStatus(ctx context.Context, walletID int, amount *big.Int) error
 	RemoveOldOrders(ctx context.Context, olderThan time.Duration) (int64, error)
+	UpdateOrderAMLStatus(ctx context.Context, orderID int, status entities.AMLStatus, notes string) error
+	FindOrderByWalletAddress(ctx context.Context, walletAddress string) (int, error)
 }
 
 type OrderService struct {
@@ -33,4 +35,12 @@ func (os *OrderService) CreateOrder(ctx context.Context, userID, walletID int, a
 
 func (os *OrderService) RemoveOldOrders(ctx context.Context, olderThan time.Duration) (int64, error) {
 	return os.repo.RemoveOldOrders(ctx, olderThan)
+}
+
+func (os *OrderService) MarkOrderForAMLReview(ctx context.Context, orderID int, notes string) error {
+	return os.repo.UpdateOrderAMLStatus(ctx, orderID, entities.AMLStatusFlagged, notes)
+}
+
+func (os *OrderService) GetOrderIdForWallet(ctx context.Context, walletAddress string) (int, error) {
+	return os.repo.FindOrderByWalletAddress(ctx, walletAddress)
 }

@@ -14,6 +14,7 @@ type TransactionsRepository interface {
 	InsertTransaction(ctx context.Context, txHash common.Hash, walletAddress string, amount *big.Int, blockNumber int64) error
 	UpdateTransaction(ctx context.Context, txHash string) error
 	UpdatePendingTransactions(ctx context.Context) error
+	UpdateTransactionAMLStatus(ctx context.Context, txHash string, status entities.AMLStatus) error
 }
 
 // TransactionServiceImpl handles blockchain transaction processing
@@ -46,4 +47,9 @@ func (ts *TransactionServiceImpl) ConfirmTransaction(ctx context.Context, txHash
 // ProcessPendingTransactions processes all confirmed but unprocessed transactions
 func (ts *TransactionServiceImpl) ProcessPendingTransactions(ctx context.Context) error {
 	return ts.repo.UpdatePendingTransactions(ctx)
+}
+
+// MarkTransactionAMLFlagged отмечает транзакцию как подозрительную по результатам AML проверки
+func (ts *TransactionServiceImpl) MarkTransactionAMLFlagged(ctx context.Context, txHash string) error {
+	return ts.repo.UpdateTransactionAMLStatus(ctx, txHash, entities.AMLStatusFlagged)
 }

@@ -5,13 +5,14 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/shared"
 	"log"
 	"log/slog"
 	"math/big"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/shared"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 
@@ -116,6 +117,7 @@ type WalletService struct {
 	repo WalletsRepository
 
 	transactions *TransactionServiceImpl
+	orderService *OrderService // Добавляем OrderService для доступа к методам работы с заказами
 
 	// Отслеживание и ускорение транзакций
 	pendingTxs       map[string]*PendingTransaction       // Карта ожидающих транзакций (ключ - хеш транзакции)
@@ -134,6 +136,7 @@ func NewWalletService(
 	seed string,
 	transactions *TransactionServiceImpl,
 	walletsRepo *repository.WalletsRepository,
+	orderService *OrderService, // Добавляем параметр OrderService
 ) (*WalletService, error) {
 	// Get the appropriate USDT contract address based on mode
 	contractAddress := GetUSDTContractAddress()
@@ -156,6 +159,7 @@ func NewWalletService(
 		wallets:      make(map[string]bool),
 		transactions: transactions,
 		repo:         walletsRepo,
+		orderService: orderService, // Инициализируем OrderService
 
 		// Инициализация карт для отслеживания транзакций
 		pendingTxs:       make(map[string]*PendingTransaction),
@@ -1494,4 +1498,12 @@ func (bsc *WalletService) GetWalletBalance(ctx context.Context, address string) 
 	bsc.walletBalancesMu.Unlock()
 
 	return walletBalance, nil
+}
+
+// GetOrderIdForWallet делегирует вызов методу OrderService для получения ID заказа по адресу кошелька
+func (bsc *WalletService) GetOrderIdForWallet(ctx context.Context, walletAddress string) (int, error) {
+	if bsc.orderService == nil {
+		return 0, errors.New("order service not initialized")
+	}
+	return bsc.orderService.GetOrderIdForWallet(ctx, walletAddress)
 }

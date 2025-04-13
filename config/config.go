@@ -17,6 +17,8 @@ type (
 		DB         `json:"db"      toml:"db"`
 		Log        `json:"logger"  toml:"logger"`
 		Tracing    `json:"tracing" toml:"tracing"`
+		AML        `json:"aml"     toml:"aml"`
+		Workers    `json:"workers" toml:"workers"`
 	}
 
 	App struct {
@@ -42,12 +44,34 @@ type (
 		RequiredConfirmations uint64 `json:"required_confirmations" toml:"required_confirmations" env:"REQUIRED_CONFIRMATIONS" env-default:"3"`
 	}
 
+	AML struct {
+		// Chainalysis API configuration
+		ChainalysisAPIKey string `json:"chainalysis_api_key" toml:"chainalysis_api_key" env:"CHAINALYSIS_API_KEY" env-default:""`
+		ChainalysisAPIURL string `json:"chainalysis_api_url" toml:"chainalysis_api_url" env:"CHAINALYSIS_API_URL" env-default:"https://api.chainalysis.com/v1"`
+
+		// Elliptic/TRM Labs API configuration
+		EllipticAPIKey string `json:"elliptic_api_key" toml:"elliptic_api_key" env:"ELLIPTIC_API_KEY" env-default:""`
+		EllipticAPIURL string `json:"elliptic_api_url" toml:"elliptic_api_url" env:"ELLIPTIC_API_URL" env-default:"https://api.trmlabs.com/v1"`
+
+		// AMLBot API configuration
+		AMLBotAPIKey string `json:"amlbot_api_key" toml:"amlbot_api_key" env:"AMLBOT_API_KEY" env-default:""`
+		AMLBotAPIURL string `json:"amlbot_api_url" toml:"amlbot_api_url" env:"AMLBOT_API_URL" env-default:"https://api.amlbot.com/v1"`
+
+		// Local AML checks configuration
+		TransactionThreshold string `json:"transaction_threshold" toml:"transaction_threshold" env:"AML_TRANSACTION_THRESHOLD" env-default:"5000.0"`
+	}
+
 	Log struct {
 		Level slog.Level `json:"level" toml:"level" env:"LOG_LEVEL"`
 	}
 
 	Tracing struct {
 		URL string ` json:"url" toml:"url" env:"TRACING_URL"`
+	}
+
+	Workers struct {
+		OrderExpiration      int `json:"order_expiration" toml:"order_expiration" env:"ORDER_EXPIRATION" env-default:"180"`                 // Default 180 minutes (3 hours)
+		OrderCleanupInterval int `json:"order_cleanup_interval" toml:"order_cleanup_interval" env:"ORDER_CLEANUP_INTERVAL" env-default:"5"` // Default 5 minutes
 	}
 )
 

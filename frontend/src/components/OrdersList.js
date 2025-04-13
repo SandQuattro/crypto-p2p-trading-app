@@ -8,6 +8,7 @@ const OrdersList = ({ userId, refreshTrigger }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [transactionIds, setTransactionIds] = useState({});
+    const [expandedOrders, setExpandedOrders] = useState({});
 
     useEffect(() => {
         const fetchData = async () => {
@@ -109,6 +110,23 @@ const OrdersList = ({ userId, refreshTrigger }) => {
             });
     };
 
+    // Функция для расчета срока действия заказа (24 часа от создания)
+    const calculateExpiryDate = (createdAt) => {
+        if (!createdAt) return '';
+        const expiryDate = new Date(createdAt);
+        expiryDate.setHours(expiryDate.getHours() + 24); // 24 часа от времени создания
+
+        return formatDate(expiryDate.toISOString());
+    };
+
+    // Функция для переключения развернутого состояния ордера
+    const toggleOrderExpand = (orderId) => {
+        setExpandedOrders(prev => ({
+            ...prev,
+            [orderId]: !prev[orderId]
+        }));
+    };
+
     return (
         <div className="orders-list-container">
             <h2>Your Orders</h2>
@@ -143,43 +161,111 @@ const OrdersList = ({ userId, refreshTrigger }) => {
 
                                 // Get transaction ID for completed orders
                                 const transactionId = order.status === 'completed' ? transactionIds[order.id] : null;
+                                const isPending = order.status === 'pending';
+                                const isExpanded = expandedOrders[order.id];
 
                                 return (
-                                    <tr key={order.id}>
-                                        <td>{order.id}</td>
-                                        <td>{order.amount}</td>
-                                        <td>
-                                            <div className="wallet-address">
-                                                {walletAddress !== "Address unavailable" ? (
-                                                    <>
-                                                        <span className="address-text" title={walletAddress}>
-                                                            {truncateAddress(walletAddress)}
+                                    <React.Fragment key={order.id}>
+                                        <tr
+                                            className={isPending ? "pending-order" : ""}
+                                            onClick={isPending ? () => toggleOrderExpand(order.id) : undefined}
+                                            style={isPending ? { cursor: 'pointer' } : {}}
+                                        >
+                                            <td>{order.id}</td>
+                                            <td>{order.amount}</td>
+                                            <td>
+                                                <div className="wallet-address">
+                                                    {walletAddress !== "Address unavailable" ? (
+                                                        <>
+                                                            <span className="address-text" title={walletAddress}>
+                                                                {truncateAddress(walletAddress)}
+                                                            </span>
+                                                            <button
+                                                                className="copy-button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    copyToClipboard(walletAddress);
+                                                                }}
+                                                                title="Copy full address"
+                                                            >
+                                                                📋
+                                                            </button>
+                                                        </>
+                                                    ) : (
+                                                        "Address unavailable"
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div className="status-container">
+                                                    <span
+                                                        className={`status-badge ${getStatusClass(order.status)}`}
+                                                        title={order.status === 'completed' && transactionId ?
+                                                            `Transaction ID: ${transactionId}` : ''}
+                                                    >
+                                                        {order.status}
+                                                    </span>
+                                                    {isPending && (
+                                                        <span className="expand-toggle">
+                                                            {isExpanded ? '▼' : '▶'}
                                                         </span>
-                                                        <button
-                                                            className="copy-button"
-                                                            onClick={() => copyToClipboard(walletAddress)}
-                                                            title="Copy full address"
-                                                        >
-                                                            📋
-                                                        </button>
-                                                    </>
-                                                ) : (
-                                                    "Address unavailable"
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <span
-                                                className={`status-badge ${getStatusClass(order.status)}`}
-                                                title={order.status === 'completed' && transactionId ?
-                                                    `Transaction ID: ${transactionId}` : ''}
-                                            >
-                                                {order.status}
-                                            </span>
-                                        </td>
-                                        <td>{formatDate(order.created_at)}</td>
-                                        <td>{formatDate(order.updated_at)}</td>
-                                    </tr>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td>{formatDate(order.created_at)}</td>
+                                            <td>{formatDate(order.updated_at)}</td>
+                                        </tr>
+
+                                        {isPending && isExpanded && (
+                                            <tr className="payment-details-row">
+                                                <td colSpan="6">
+                                                    <div className="payment-info-container">
+                                                        <div className="wallet-address-container">
+                                                            <span className="wallet-address-label">Payment address:</span>
+                                                            <div className="wallet-address">
+                                                                <span className="address-text">{walletAddress}</span>
+                                                                <button
+                                                                    className="copy-button"
+                                                                    onClick={() => copyToClipboard(walletAddress)}
+                                                                    title="Copy full address"
+                                                                >
+                                                                    📋
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="payment-notice warning">
+                                                            <div className="notice-icon">⚠️</div>
+                                                            <div className="notice-text">
+                                                                Please note that your payment will be processed by a third-party payment service provider and not by Safelement Limited. The third-party payment service provider may block the payment and request additional information. You agree to provide us with such additional information or documents to comply with the request of the third-party payment service provider. In case of non-cooperation from your side, we will not be able to complete the payment or return it to you if you decide to proceed with a refund.
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="payment-notice warning">
+                                                            <div className="notice-icon">⚠️</div>
+                                                            <div className="notice-text">
+                                                                The top-up will be successful if the full amount is paid in a single transaction. Be sure to consider the commission and payment currency when making the transfer.
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="payment-notice success">
+                                                            <div className="notice-icon">👍</div>
+                                                            <div className="notice-text">
+                                                                Checks are credited to the balance automatically, usually within 10-30 minutes after the transaction is confirmed in blockchain.
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="payment-notice expiry">
+                                                            <div className="notice-icon">⏰</div>
+                                                            <div className="notice-text">
+                                                                Expires on {calculateExpiryDate(order.created_at)}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
                                 );
                             })}
                         </tbody>

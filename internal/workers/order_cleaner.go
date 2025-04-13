@@ -6,11 +6,6 @@ import (
 	"time"
 )
 
-// OrderService defines the interface for order operations
-type OrderService interface {
-	RemoveOldOrders(ctx context.Context, olderThan time.Duration) (int64, error)
-}
-
 // OrderCleaner worker automatically removes old pending orders
 type OrderCleaner struct {
 	logger       *slog.Logger

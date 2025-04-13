@@ -8,11 +8,13 @@ const OrdersPage = () => {
     const [userId, setUserId] = useState('1');
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [orderCreated, setOrderCreated] = useState(false);
 
     const handleOrderCreated = () => {
         // Trigger a refresh of the orders list
         setRefreshTrigger(prev => prev + 1);
-        // Close the modal after order creation
+        // Отмечаем, что заказ создан и закрываем модальное окно
+        setOrderCreated(true);
         setIsModalOpen(false);
     };
 
@@ -22,10 +24,17 @@ const OrdersPage = () => {
 
     const openModal = () => {
         setIsModalOpen(true);
+        setOrderCreated(false); // Сбрасываем флаг при открытии модального окна
     };
 
     const closeModal = () => {
         setIsModalOpen(false);
+        // Не сбрасываем orderCreated при закрытии, чтобы информация сохранялась при повторном открытии
+    };
+
+    const resetAndCloseModal = () => {
+        setIsModalOpen(false);
+        setOrderCreated(false); // Сбрасываем флаг только когда пользователь закрывает окно после просмотра информации
     };
 
     return (
@@ -54,8 +63,23 @@ const OrdersPage = () => {
                 <OrdersList userId={userId} refreshTrigger={refreshTrigger} />
             </div>
 
-            <Modal isOpen={isModalOpen} onClose={closeModal} title="Create New Order">
-                <OrderForm onOrderCreated={handleOrderCreated} selectedUserId={userId} />
+            <Modal
+                isOpen={isModalOpen}
+                onClose={orderCreated ? resetAndCloseModal : closeModal}
+                title={orderCreated ? "Payment Information" : "Create New Order"}
+            >
+                <OrderForm
+                    onOrderCreated={handleOrderCreated}
+                    selectedUserId={userId}
+                    orderCreated={orderCreated}
+                />
+                {orderCreated && (
+                    <div className="modal-footer">
+                        <button className="close-button" onClick={resetAndCloseModal}>
+                            Close
+                        </button>
+                    </div>
+                )}
             </Modal>
         </div>
     );

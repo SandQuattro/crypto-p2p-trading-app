@@ -26,7 +26,7 @@ func NewOrdersRepository(logger *slog.Logger, pg *database.Postgres) *OrdersRepo
 }
 
 func (r *OrdersRepository) FindUserOrders(ctx context.Context, userID int) ([]entities.Order, error) {
-	rows, err := r.db(ctx).Query(ctx, "SELECT id, user_id, wallet_id, amount, status, created_at, updated_at FROM orders WHERE user_id = $1", userID)
+	rows, err := r.db(ctx).Query(ctx, "SELECT id, user_id, wallet_id, amount, status, aml_status, COALESCE(aml_notes, '') as aml_notes, created_at, updated_at FROM orders WHERE user_id = $1", userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -132,4 +132,43 @@ func (r *OrdersRepository) RemoveOldOrders(ctx context.Context, olderThan time.D
 	}
 
 	return deletedCount, nil
+}
+
+// UpdateOrderAMLStatus обновляет AML статус ордера
+func (r *OrdersRepository) UpdateOrderAMLStatus(ctx context.Context, orderID int, status entities.AMLStatus, notes string) error {
+	_, err := r.db(ctx).Exec(ctx,
+		"UPDATE orders SET aml_status = $1, aml_notes = $2, updated_at = NOW() WHERE id = $3",
+		status, notes, orderID)
+	if err != nil {
+		return fmt.Errorf("failed to update order AML status: %w", err)
+	}
+
+	r.logger.Info("Order AML status updated",
+		"order_id", orderID,
+		"status", status)
+	return nil
+}
+
+// FindOrderByWalletAddress находит ID ордера по адресу кошелька
+func (r *OrdersRepository) FindOrderByWalletAddress(ctx context.Context, walletAddress string) (int, error) {
+	var orderID int
+
+	query := `
+		SELECT o.id 
+		FROM orders o
+		JOIN wallets w ON o.wallet_id = w.id
+		WHERE w.address = $1 AND o.status = 'pending'
+		ORDER BY o.id DESC
+		LIMIT 1
+	`
+
+	err := r.db(ctx).QueryRow(ctx, query, walletAddress).Scan(&orderID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, fmt.Errorf("no pending order found for wallet %s", walletAddress)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("failed to find order by wallet address: %w", err)
+	}
+
+	return orderID, nil
 }

@@ -38,7 +38,7 @@ func NewTransactionsRepository(logger *slog.Logger, pg *database.Postgres, order
 
 // FindTransactionsByWallet retrieves all transactions for a specific wallet.
 func (r *TransactionsRepository) FindTransactionsByWallet(ctx context.Context, walletAddress string) ([]entities.Transaction, error) {
-	query := `SELECT id, tx_hash, wallet_address, amount, block_number, confirmed, processed, created_at, updated_at 
+	query := `SELECT id, tx_hash, wallet_address, amount, block_number, confirmed, processed, aml_status, created_at, updated_at 
                 FROM transactions 
                WHERE wallet_address = $1 
                ORDER BY id DESC
@@ -151,5 +151,20 @@ func (r *TransactionsRepository) UpdatePendingTransactions(ctx context.Context) 
 		r.logger.Info("Transaction processed", "tx_hash", transaction.TxHash, "wallet", transaction.WalletAddress, "amount", transaction.Amount)
 	}
 
+	return nil
+}
+
+// UpdateTransactionAMLStatus обновляет AML статус транзакции
+func (r *TransactionsRepository) UpdateTransactionAMLStatus(ctx context.Context, txHash string, status entities.AMLStatus) error {
+	_, err := r.db(ctx).Exec(ctx,
+		"UPDATE transactions SET aml_status = $1, updated_at = NOW() WHERE tx_hash = $2",
+		status, txHash)
+	if err != nil {
+		return fmt.Errorf("failed to update transaction AML status: %w", err)
+	}
+
+	r.logger.Info("Transaction AML status updated",
+		"tx_hash", txHash,
+		"status", status)
 	return nil
 }
