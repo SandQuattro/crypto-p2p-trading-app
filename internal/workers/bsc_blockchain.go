@@ -98,6 +98,7 @@ type TransactionService interface {
 	ConfirmTransaction(ctx context.Context, txHash string) error
 	ProcessPendingTransactions(ctx context.Context) error
 	MarkTransactionAMLFlagged(ctx context.Context, txHash string) error
+	MarkTransactionAMLCleared(ctx context.Context, txHash string) error
 }
 
 // AMLService определяет интерфейс для AML проверок
@@ -126,6 +127,7 @@ type WalletService interface {
 // OrderService defines the interface for order operations.
 type OrderService interface {
 	MarkOrderForAMLReview(ctx context.Context, orderID int, notes string) error
+	MarkOrderAMLCleared(ctx context.Context, orderID int, notes string) error
 	RemoveOldOrders(ctx context.Context, olderThan time.Duration) (int64, error)
 	GetUserOrders(ctx context.Context, userID int) ([]entities.Order, error)
 	CreateOrder(ctx context.Context, userID, walletID int, amount string) error
@@ -638,7 +640,20 @@ func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclien
 									"risk_score", amlResult.RiskScore,
 									"approved", amlResult.Approved)
 
-								// Если транзакция не одобрена по AML, отмечаем её в системе
+								// Получаем ID связанного ордера
+								var orderID int
+								var orderErr error
+
+								if bsc.orders != nil {
+									orderID, orderErr = bsc.wallets.GetOrderIdForWallet(ctx, recipientAddr)
+									if orderErr != nil {
+										bsc.logger.ErrorContext(ctx, "Failed to get order for wallet",
+											"error", orderErr,
+											"wallet", recipientAddr)
+									}
+								}
+
+								// Обновляем статус в зависимости от результата проверки
 								if !amlResult.Approved {
 									bsc.logger.WarnContext(ctx, "Transaction flagged by AML check",
 										"tx_id", txID,
@@ -656,37 +671,57 @@ func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclien
 											"tx_hash", txHash)
 									}
 
-									// Получаем и обновляем статус связанного ордера
-									if bsc.orders != nil {
-										orderID, err := bsc.wallets.GetOrderIdForWallet(ctx, recipientAddr)
+									// Обновляем статус ордера если он найден
+									if bsc.orders != nil && orderErr == nil {
+										err = bsc.orders.MarkOrderForAMLReview(ctx, orderID, amlResult.Notes)
 										if err != nil {
-											bsc.logger.ErrorContext(ctx, "Failed to get order for wallet",
+											bsc.logger.ErrorContext(ctx, "Failed to mark order for AML review",
 												"error", err,
-												"wallet", recipientAddr)
+												"order_id", orderID)
+										}
+									}
+								} else {
+									// Если проверка прошла успешно
+
+									// Обновляем статус транзакции как прошедшей проверку
+									err = bsc.transactions.MarkTransactionAMLCleared(ctx, txHash)
+									if err != nil {
+										bsc.logger.ErrorContext(ctx, "Failed to mark transaction as AML cleared",
+											"error", err,
+											"tx_hash", txHash)
+									} else {
+										bsc.logger.InfoContext(ctx, "Transaction AML status updated to cleared",
+											"tx_hash", txHash)
+									}
+
+									// Обновляем статус ордера если он найден
+									if bsc.orders != nil && orderErr == nil {
+										err = bsc.orders.MarkOrderAMLCleared(ctx, orderID, amlResult.Notes)
+										if err != nil {
+											bsc.logger.ErrorContext(ctx, "Failed to mark order as AML cleared",
+												"error", err,
+												"order_id", orderID)
 										} else {
-											err = bsc.orders.MarkOrderForAMLReview(ctx, orderID, amlResult.Notes)
-											if err != nil {
-												bsc.logger.ErrorContext(ctx, "Failed to mark order for AML review",
-													"error", err,
-													"order_id", orderID)
-											}
+											bsc.logger.InfoContext(ctx, "Order AML status updated to cleared",
+												"order_id", orderID,
+												"tx_hash", txHash)
 										}
 									}
 								}
+
+								// Record the transaction
+								if err = bsc.transactions.RecordTransaction(ctx, tx.Hash(), recipientAddr, amount, int64(blockNumber)); err != nil {
+									bsc.logger.ErrorContext(ctx, "Failed to record transaction",
+										"error", err,
+										"tx_id", txID,
+										"tx_hash", txHash)
+								}
+
+								// Check confirmations after RequiredConfirmations blocks
+								// Используем семафор для ограничения количества одновременных проверок
+								bsc.scheduleConfirmationCheck(ctx, client, tx.Hash(), blockNumber, txID)
 							}
 						}
-
-						// Record the transaction
-						if err = bsc.transactions.RecordTransaction(ctx, tx.Hash(), recipientAddr, amount, int64(blockNumber)); err != nil {
-							bsc.logger.ErrorContext(ctx, "Failed to record transaction",
-								"error", err,
-								"tx_id", txID,
-								"tx_hash", txHash)
-						}
-
-						// Check confirmations after RequiredConfirmations blocks
-						// Используем семафор для ограничения количества одновременных проверок
-						bsc.scheduleConfirmationCheck(ctx, client, tx.Hash(), blockNumber, txID)
 					}
 				}
 			}

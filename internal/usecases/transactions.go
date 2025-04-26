@@ -53,3 +53,8 @@ func (ts *TransactionServiceImpl) ProcessPendingTransactions(ctx context.Context
 func (ts *TransactionServiceImpl) MarkTransactionAMLFlagged(ctx context.Context, txHash string) error {
 	return ts.repo.UpdateTransactionAMLStatus(ctx, txHash, entities.AMLStatusFlagged)
 }
+
+// MarkTransactionAMLCleared отмечает транзакцию как прошедшую AML проверку
+func (ts *TransactionServiceImpl) MarkTransactionAMLCleared(ctx context.Context, txHash string) error {
+	return ts.repo.UpdateTransactionAMLStatus(ctx, txHash, entities.AMLStatusCleared)
+}

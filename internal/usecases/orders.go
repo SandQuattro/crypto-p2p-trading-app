@@ -42,6 +42,11 @@ func (os *OrderService) MarkOrderForAMLReview(ctx context.Context, orderID int, 
 	return os.repo.UpdateOrderAMLStatus(ctx, orderID, entities.AMLStatusFlagged, notes)
 }
 
+// MarkOrderAMLCleared обновляет статус AML ордера на "очищено" (проверка пройдена)
+func (os *OrderService) MarkOrderAMLCleared(ctx context.Context, orderID int, notes string) error {
+	return os.repo.UpdateOrderAMLStatus(ctx, orderID, entities.AMLStatusCleared, notes)
+}
+
 func (os *OrderService) GetOrderIdForWallet(ctx context.Context, walletAddress string) (int, error) {
 	return os.repo.FindOrderByWalletAddress(ctx, walletAddress)
 }
