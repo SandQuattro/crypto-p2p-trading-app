@@ -103,22 +103,22 @@ const WalletsManagement = ({ userId }) => {
     const truncateAddress = (address) => {
         if (!address) return '';
 
-        // Keep first 15 and last 15 characters, add ellipsis in the middle
-        const start = address.substring(0, 15);
-        const end = address.substring(address.length - 15);
+        // Keep first and last 12 characters, add ellipsis in the middle
+        const start = address.substring(0, 12);
+        const end = address.substring(address.length - 12);
         return `${start}...${end}`;
     };
 
     // Add a new function to format balances nicely
-    const formatBalance = (balanceStr) => {
-        if (!balanceStr || balanceStr === '0') return '0.00';
+    const formatBalance = (balanceStr, precision = 2) => {
+        if (!balanceStr || balanceStr === '0') return precision === 2 ? '0.00' : '0.' + '0'.repeat(precision);
 
         // Try to parse the balance as a number
         const balanceNum = parseFloat(balanceStr);
-        if (isNaN(balanceNum)) return '0.00';
+        if (isNaN(balanceNum)) return precision === 2 ? '0.00' : '0.' + '0'.repeat(precision);
 
-        // Format with 2 decimal places
-        return balanceNum.toFixed(2);
+        // Format with specified decimal places
+        return balanceNum.toFixed(precision);
     };
 
     return (
@@ -145,9 +145,9 @@ const WalletsManagement = ({ userId }) => {
                             <tr>
                                 <th style={{ width: '5%', minWidth: '40px' }}>ID</th>
                                 <th style={{ width: '10%', minWidth: '80px' }}>User</th>
-                                <th style={{ width: '35%', minWidth: '280px' }}>Wallet Address</th>
-                                <th style={{ width: '12.5%', minWidth: '100px', textAlign: 'right', paddingRight: '25px' }}>USDT Balance</th>
-                                <th style={{ width: '12.5%', minWidth: '100px', textAlign: 'right', paddingRight: '25px' }}>BNB Balance</th>
+                                <th style={{ width: '25%', minWidth: '200px' }}>Wallet Address</th>
+                                <th style={{ width: '10%', minWidth: '100px', textAlign: 'left' }}>USDT Balance</th>
+                                <th style={{ width: '15%', minWidth: '120px', textAlign: 'left', paddingRight: '25px' }}>BNB Balance</th>
                                 <th style={{ width: '15%', minWidth: '140px' }}>Created Date</th>
                                 <th style={{ width: '10%', minWidth: '100px' }}>Actions</th>
                             </tr>
@@ -177,7 +177,7 @@ const WalletsManagement = ({ userId }) => {
                                             </div>
                                         </td>
                                         <td className="balance-cell">{isBalancesLoading ? '...' : formatBalance(walletBalance.token_balance_ether)}</td>
-                                        <td className="balance-cell">{isBalancesLoading ? '...' : formatBalance(walletBalance.bnb_balance_ether)}</td>
+                                        <td className="balance-cell">{isBalancesLoading ? '...' : formatBalance(walletBalance.bnb_balance_ether, 18)}</td>
                                         <td>{wallet.created_at ? formatDate(wallet.created_at) : 'N/A'}</td>
                                         <td>
                                             <button
