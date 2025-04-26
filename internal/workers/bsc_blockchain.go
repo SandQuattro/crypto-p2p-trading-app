@@ -119,6 +119,7 @@ type WalletService interface {
 
 	// Методы мониторинга балансов
 	GetWalletBalances(ctx context.Context) (map[string]*entities.WalletBalance, error)
+	GetUserWalletsBalances(ctx context.Context, userID int) (map[string]*entities.WalletBalance, error)
 	GetWalletBalance(ctx context.Context, address string) (*entities.WalletBalance, error)
 }
 

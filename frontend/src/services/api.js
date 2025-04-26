@@ -108,13 +108,17 @@ export const getTransactionIdForWallet = async (walletAddress) => {
   }
 };
 
-// Get balances for all wallets
-export const getWalletBalances = async () => {
+// Get balances for user wallets
+export const getWalletBalances = async (userId) => {
+  if (!userId) {
+    console.error('User ID is required to fetch wallet balances.');
+    throw new Error('User ID is required.');
+  }
   try {
-    const response = await axios.get(`${BASE_URL}/wallet/balances`);
+    const response = await axios.get(`${BASE_URL}/wallet/balances?user_id=${userId}`);
     return response.data;
   } catch (error) {
-    console.error('Error fetching wallet balances:', error);
+    console.error(`Error fetching wallet balances for user ${userId}:`, error);
     throw error;
   }
 };

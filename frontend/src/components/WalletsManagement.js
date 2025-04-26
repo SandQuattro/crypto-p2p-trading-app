@@ -5,34 +5,49 @@ import '../App.css';
 const WalletsManagement = ({ userId }) => {
     const [wallets, setWallets] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [isBalancesLoading, setIsBalancesLoading] = useState(false);
     const [error, setError] = useState('');
     const [balances, setBalances] = useState({});
     const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+    const loadBalances = async () => {
+        setIsBalancesLoading(true);
+        try {
+            await fetchWalletBalances(userId);
+        } catch (balanceError) {
+            console.error("Error initiating balance fetch:", balanceError);
+            setError(prevError => prevError || 'Failed to load balances.');
+        } finally {
+            setIsBalancesLoading(false);
+        }
+    };
 
     useEffect(() => {
         const fetchWallets = async () => {
             setLoading(true);
             setError('');
+            setWallets([]);
+            setBalances({});
+            setIsBalancesLoading(false);
 
+            let fetchedWallets = [];
             try {
-                // Try to fetch extended wallet details first
                 try {
-                    const extendedWalletDetails = await getWalletDetailsExtended(userId);
-                    setWallets(extendedWalletDetails || []);
+                    fetchedWallets = await getWalletDetailsExtended(userId);
                 } catch (extendedError) {
                     console.warn('Extended wallet details not available, falling back to basic details');
-
-                    // If extended details fail, fall back to basic details
-                    const walletDetails = await getWalletDetails(userId);
-                    setWallets(walletDetails || []);
+                    fetchedWallets = await getWalletDetails(userId);
                 }
 
-                // Fetch balances for each wallet
-                fetchWalletBalances();
+                setWallets(fetchedWallets || []);
+                setLoading(false);
+
+                if (fetchedWallets && fetchedWallets.length > 0) {
+                    await loadBalances();
+                }
             } catch (error) {
                 console.error('Error fetching wallets:', error);
                 setError('Failed to load wallet details. Please try again.');
-            } finally {
                 setLoading(false);
             }
         };
@@ -40,9 +55,9 @@ const WalletsManagement = ({ userId }) => {
         fetchWallets();
     }, [userId, refreshTrigger]);
 
-    const fetchWalletBalances = async () => {
+    const fetchWalletBalances = async (currentUserId) => {
         try {
-            const data = await getWalletBalances();
+            const data = await getWalletBalances(currentUserId);
             setBalances(data);
         } catch (error) {
             console.error('Error fetching wallet balances:', error);
@@ -50,9 +65,12 @@ const WalletsManagement = ({ userId }) => {
         }
     };
 
-    const handleRefreshBalance = (address) => {
-        // Refresh the balances
-        fetchWalletBalances();
+    const handleRefreshBalance = async (address) => {
+        await loadBalances();
+    };
+
+    const handleRefreshAll = () => {
+        setRefreshTrigger(prev => prev + 1);
     };
 
     const formatDate = (dateString) => {
@@ -105,9 +123,10 @@ const WalletsManagement = ({ userId }) => {
             <h2>Wallets Management</h2>
             <button
                 className="refresh-all-button"
-                onClick={() => setRefreshTrigger(prev => prev + 1)}
+                onClick={handleRefreshAll}
+                disabled={loading || isBalancesLoading}
             >
-                Refresh All Wallets
+                {loading ? 'Loading Wallets...' : isBalancesLoading ? 'Refreshing Balances...' : 'Refresh All Wallets'}
             </button>
 
             {loading ? (
@@ -151,21 +170,23 @@ const WalletsManagement = ({ userId }) => {
                                                     className="copy-button"
                                                     onClick={() => copyToClipboard(wallet.address)}
                                                     title="Copy full address"
+                                                    disabled={isBalancesLoading}
                                                 >
                                                     📋
                                                 </button>
                                             </div>
                                         </td>
-                                        <td className="balance-cell">{formatBalance(walletBalance.token_balance_ether)}</td>
-                                        <td className="balance-cell">{formatBalance(walletBalance.bnb_balance_ether)}</td>
+                                        <td className="balance-cell">{isBalancesLoading ? '...' : formatBalance(walletBalance.token_balance_ether)}</td>
+                                        <td className="balance-cell">{isBalancesLoading ? '...' : formatBalance(walletBalance.bnb_balance_ether)}</td>
                                         <td>{wallet.created_at ? formatDate(wallet.created_at) : 'N/A'}</td>
                                         <td>
                                             <button
                                                 className="refresh-balance-button"
                                                 onClick={() => handleRefreshBalance(wallet.address)}
                                                 title="Update balance"
+                                                disabled={isBalancesLoading}
                                             >
-                                                🔄
+                                                {isBalancesLoading ? '...' : '🔄'}
                                             </button>
                                         </td>
                                     </tr>
@@ -175,12 +196,12 @@ const WalletsManagement = ({ userId }) => {
                     </table>
                 </div>
             )}
-            {Object.keys(balances).length > 0 && (
+            {Object.keys(balances).length > 0 && !isBalancesLoading && (
                 <div className="last-updated">
-                    Last updated: {new Date().toLocaleString()}
+                    Balances updated: {new Date().toLocaleString()}
                 </div>
             )}
-            {wallets.length > 0 && !wallets[0].created_at && (
+            {wallets.length > 0 && !wallets[0].created_at && !loading && (
                 <div className="note-message">
                     Note: Creation dates are not available from the backend. Please update the backend API to include this information.
                 </div>

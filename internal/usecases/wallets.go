@@ -1402,6 +1402,55 @@ func (bsc *WalletService) checkAllWalletBalances(ctx context.Context) error {
 	return nil
 }
 
+// GetUserWalletsBalances возвращает информацию о балансах кошельков для указанного пользователя из кеша.
+// Важно: подразумевается, что monitorWalletBalances регулярно обновляет кеш bsc.walletBalances.
+func (bsc *WalletService) GetUserWalletsBalances(ctx context.Context, userID int) (map[string]*entities.WalletBalance, error) {
+	bsc.logger.DebugContext(ctx, "Fetching wallet balances for user", "user_id", userID)
+
+	// Получить все кошельки для данного пользователя из репозитория
+	userWallets, err := bsc.repo.GetAllTrackedWalletsForUser(ctx, int64(userID))
+	if err != nil {
+		bsc.logger.ErrorContext(ctx, "Failed to get tracked wallets for user", "error", err, "user_id", userID)
+		return nil, fmt.Errorf("failed to get wallets for user %d: %w", userID, err)
+	}
+
+	if len(userWallets) == 0 {
+		bsc.logger.InfoContext(ctx, "No wallets found for user", "user_id", userID)
+		return make(map[string]*entities.WalletBalance), nil
+	}
+
+	// 2. Создать карту для результатов
+	userBalances := make(map[string]*entities.WalletBalance)
+
+	// 3. Прочитать актуальные балансы из кеша (безопасно)
+	bsc.walletBalancesMu.RLock()
+	defer bsc.walletBalancesMu.RUnlock()
+
+	// 4. Отфильтровать балансы, оставив только те, что принадлежат пользователю
+	for _, wallet := range userWallets {
+		address := wallet.Address
+		if balance, ok := bsc.walletBalances[address]; ok {
+			// Копируем баланс, чтобы избежать гонки данных при возврате указателя
+			userBalances[address] = &entities.WalletBalance{
+				Address:       balance.Address,
+				TokenBalance:  new(big.Int).Set(balance.TokenBalance),  // Глубокое копирование
+				NativeBalance: new(big.Int).Set(balance.NativeBalance), // Глубокое копирование
+				Status:        balance.Status,
+				LastChecked:   balance.LastChecked,
+			}
+		} else {
+			// Логируем, если баланс для отслеживаемого кошелька пользователя отсутствует в кеше
+			// Это может указывать на задержку в monitorWalletBalances или другую проблему
+			bsc.logger.WarnContext(ctx, "Balance not found in cache for user's tracked wallet", "address", address, "user_id", userID)
+			// Можно инициализировать с нулевым балансом или пропустить
+			// userBalances[address] = &entities.WalletBalance{ Address: address, TokenBalance: big.NewInt(0), NativeBalance: big.NewInt(0), Status: entities.BalanceStatusUnknown }
+		}
+	}
+
+	bsc.logger.DebugContext(ctx, "Returning balances for user", "user_id", userID, "count", len(userBalances))
+	return userBalances, nil
+}
+
 // GetWalletBalances возвращает информацию о балансах всех отслеживаемых кошельков
 func (bsc *WalletService) GetWalletBalances(ctx context.Context) (map[string]*entities.WalletBalance, error) {
 	// Обновляем балансы перед возвратом

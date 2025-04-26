@@ -443,6 +443,20 @@ func (h *HTTPHandler) CheckWalletBalance(w http.ResponseWriter, r *http.Request)
 
 // GetWalletBalancesHandler возвращает информацию о балансах всех отслеживаемых кошельков
 func (h *HTTPHandler) GetWalletBalancesHandler(w http.ResponseWriter, r *http.Request) {
+	// Получаем user_id из query параметров
+	userIDStr := r.URL.Query().Get("user_id")
+	if userIDStr == "" {
+		http.Error(w, "Missing required parameter: user_id", http.StatusBadRequest)
+		return
+	}
+
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		h.logger.Error("Invalid user_id format", "error", err, "user_id", userIDStr)
+		http.Error(w, "Invalid user_id format", http.StatusBadRequest)
+		return
+	}
+
 	// Получаем walletService как конкретную реализацию для доступа к методам мониторинга
 	walletService, ok := h.walletService.(*usecases.WalletService)
 	if !ok {
@@ -451,7 +465,7 @@ func (h *HTTPHandler) GetWalletBalancesHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	// Получаем балансы кошельков
-	balances, err := walletService.GetWalletBalances(r.Context())
+	balances, err := walletService.GetUserWalletsBalances(r.Context(), userID)
 	if err != nil {
 		h.logger.Error("Failed to get wallet balances", "error", err)
 		http.Error(w, fmt.Sprintf("Failed to get wallet balances: %v", err), http.StatusInternalServerError)
