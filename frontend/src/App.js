@@ -51,7 +51,18 @@ function App() {
   useEffect(() => {
     if (!selectedPair) return;
 
-    const ws = new WebSocket(`ws://localhost:8080/ws/${selectedPair}`);
+    // Determine WebSocket URL based on API_URL
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+    // Replace http with ws, or https with wss
+    const wsUrl = apiUrl.replace(/^(http)/, 'ws');
+
+    console.log("Connecting WebSocket to:", `${wsUrl}/ws/${selectedPair}`); // Debug log
+
+    const ws = new WebSocket(`${wsUrl}/ws/${selectedPair}`);
+
+    ws.onopen = () => {
+      console.log('WebSocket connection opened');
+    };
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);

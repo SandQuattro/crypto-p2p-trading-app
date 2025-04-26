@@ -1,7 +1,8 @@
 import axios from 'axios';
 
-export const API_BASE_URL = 'http://localhost:8080/data';
-export const BASE_URL = 'http://localhost:8080';
+// Use environment variable for API base URL, default to localhost for development
+export const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+export const API_BASE_URL = `${BASE_URL}/data`;
 
 // Fetch all available trading pairs
 export const fetchTradingPairs = async () => {
