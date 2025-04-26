@@ -612,7 +612,7 @@ func (bsc *BinanceSmartChain) processBlock(ctx context.Context, client *ethclien
 					}
 
 					if isOurWallet {
-						bsc.logger.InfoContext(ctx, "USDT Transfer to our wallet detected",
+						bsc.logger.WarnContext(ctx, "USDT Transfer to our wallet detected",
 							"tx_id", txID,
 							"tx_hash", txHash,
 							"from", sender.Hex(),
