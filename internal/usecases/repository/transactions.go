@@ -157,7 +157,7 @@ func (r *TransactionsRepository) UpdatePendingTransactions(ctx context.Context) 
 // UpdateTransactionAMLStatus обновляет AML статус транзакции
 func (r *TransactionsRepository) UpdateTransactionAMLStatus(ctx context.Context, txHash string, status entities.AMLStatus) error {
 	_, err := r.db(ctx).Exec(ctx,
-		"UPDATE transactions SET aml_status = $1, updated_at = NOW() WHERE tx_hash = $2",
+		"UPDATE transactions SET aml_status = $1::aml_status_type, updated_at = NOW() WHERE tx_hash = $2",
 		status, txHash)
 	if err != nil {
 		return fmt.Errorf("failed to update transaction AML status: %w", err)
