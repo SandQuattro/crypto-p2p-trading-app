@@ -368,9 +368,9 @@ func (bsc *BinanceSmartChain) processBlockByNumber(ctx context.Context, client *
 		// Проверяем, является ли ошибка "not found"
 		if strings.Contains(err.Error(), "not found") {
 			if attempt < maxRetries {
-				bsc.logger.InfoContext(ctx, "Block not available yet, retrying",
-					"block", blockNumber, "attempt", attempt, "max_retries", maxRetries,
-					"retry_delay", retryDelay)
+				//bsc.logger.InfoContext(ctx, "Block not available yet, retrying",
+				//	"block", blockNumber, "attempt", attempt, "max_retries", maxRetries,
+				//	"retry_delay", retryDelay)
 
 				// Ждем перед следующей попыткой
 				select {
@@ -471,12 +471,12 @@ func (bsc *BinanceSmartChain) processBlockHeader(ctx context.Context, client *et
 			}
 
 			if attempt < maxRetries {
-				bsc.logger.InfoContext(ctx, "Block not available yet, retrying",
-					"block_hash", header.Hash().Hex(),
-					"block", blockNumber,
-					"attempt", attempt,
-					"max_retries", maxRetries,
-					"retry_delay", retryDelay)
+				//bsc.logger.InfoContext(ctx, "Block not available yet, retrying",
+				//	"block_hash", header.Hash().Hex(),
+				//	"block", blockNumber,
+				//	"attempt", attempt,
+				//	"max_retries", maxRetries,
+				//	"retry_delay", retryDelay)
 
 				// Ждем перед следующей попыткой
 				select {
