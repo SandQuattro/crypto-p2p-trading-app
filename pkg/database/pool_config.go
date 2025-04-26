@@ -19,7 +19,7 @@ func setupPoolConfig(cfg *config.Config, pg *Postgres, poolConfig *pgxpool.Confi
 	poolConfig.ConnConfig.ConnectTimeout = time.Duration(pg.connTimeout) * time.Second
 	poolConfig.HealthCheckPeriod = time.Duration(pg.healthCheckPeriod) * time.Minute
 
-	if cfg.Debug {
+	if cfg.App.Debug {
 		poolConfig.ConnConfig.Tracer = &multitracer.Tracer{
 			QueryTracers: []pgx.QueryTracer{
 				&SQLQueryTracer{},

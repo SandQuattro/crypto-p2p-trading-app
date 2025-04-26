@@ -143,9 +143,9 @@ func NewWalletService(
 
 	// Log which mode we're operating in
 	if shared.IsBlockchainDebugMode() {
-		logger.Info("Wallet service initialized in DEBUG mode (using BSC Testnet)")
+		logger.Warn("Wallet service initialized in DEBUG mode (using BSC Testnet)")
 	} else {
-		logger.Info("Wallet service initialized in PRODUCTION mode (using BSC Mainnet)")
+		logger.Warn("Wallet service initialized in PRODUCTION mode (using BSC Mainnet)")
 	}
 
 	ws := &WalletService{

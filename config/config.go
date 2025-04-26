@@ -39,6 +39,7 @@ type (
 	}
 
 	Blockchain struct {
+		Debug                 bool   `json:"blockchain_debug" toml:"blockchain_debug" env:"BLOCKCHAIN_DEBUG_MODE" env-default:"false"`
 		RPCURL                string `json:"rpc_url" toml:"rpc_url" env:"RPC_URL" env-default:"https://bsc-dataseed.binance.org/"`
 		WalletSeed            string `json:"wallet_seed" toml:"wallet_seed" env:"WALLET_SEED" env-default:"your secure seed phrase here"`
 		RequiredConfirmations uint64 `json:"required_confirmations" toml:"required_confirmations" env:"REQUIRED_CONFIRMATIONS" env-default:"3"`

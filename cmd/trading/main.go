@@ -52,7 +52,7 @@ func main() {
 		Level: slog.LevelInfo,
 	}
 
-	if config.Debug {
+	if config.App.Debug {
 		opts.Level = slog.LevelDebug
 	}
 
@@ -71,7 +71,9 @@ func main() {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, opts))
-	logger.Info("Starting application with configuration",
+	logger.Warn("Starting application with configuration",
+		"debug", config.App.Debug,
+		"blockchain_debug", config.Blockchain.Debug,
 		"rpc_url", config.RPCURL,
 		"server_port", config.HTTP.Port,
 		"database_url", config.DB.DatabaseURL)
