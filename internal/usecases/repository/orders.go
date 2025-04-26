@@ -26,7 +26,7 @@ func NewOrdersRepository(logger *slog.Logger, pg *database.Postgres) *OrdersRepo
 }
 
 func (r *OrdersRepository) FindUserOrders(ctx context.Context, userID int) ([]entities.Order, error) {
-	rows, err := r.db(ctx).Query(ctx, "SELECT id, user_id, wallet_id, amount, status, aml_status, COALESCE(aml_notes, '') as aml_notes, created_at, updated_at FROM orders WHERE user_id = $1", userID)
+	rows, err := r.db(ctx).Query(ctx, "SELECT id, user_id, wallet_id, amount, status, aml_status, aml_notes, created_at, updated_at FROM orders WHERE user_id = $1", userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

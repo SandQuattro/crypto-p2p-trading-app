@@ -10,7 +10,7 @@ type Order struct {
 	Amount    string    `json:"amount"`
 	Status    string    `json:"status"`
 	AMLStatus AMLStatus `json:"aml_status"`
-	AMLNotes  string    `json:"aml_notes,omitempty"`
+	AMLNotes  *string   `json:"aml_notes,omitempty"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
