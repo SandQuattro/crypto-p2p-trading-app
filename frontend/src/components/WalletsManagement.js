@@ -1,8 +1,10 @@
 import React, {useEffect, useState} from 'react';
 import {getWalletBalances, getWalletDetails, getWalletDetailsExtended} from '../services/api';
+import {useNotification} from '../context/NotificationContext';
 import '../App.css';
 
 const WalletsManagement = ({ userId }) => {
+    const { addNotification } = useNotification();
     const [wallets, setWallets] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isBalancesLoading, setIsBalancesLoading] = useState(false);
@@ -90,10 +92,11 @@ const WalletsManagement = ({ userId }) => {
     const copyToClipboard = (text) => {
         navigator.clipboard.writeText(text)
             .then(() => {
-                alert('Wallet address copied to clipboard!');
+                addNotification('Wallet address copied to clipboard!', 'info');
             })
             .catch(err => {
                 console.error('Failed to copy text: ', err);
+                addNotification('Failed to copy wallet address.', 'error');
             });
     };
 
@@ -163,17 +166,14 @@ const WalletsManagement = ({ userId }) => {
                                         <td className="user-id-cell">{wallet.user_id || userId}</td>
                                         <td>
                                             <div className="wallet-address">
-                                                <span className="address-text" title={wallet.address}>
+                                                <span
+                                                    className="address-text"
+                                                    title={wallet.address}
+                                                    style={{ cursor: 'pointer' }}
+                                                    onClick={() => copyToClipboard(wallet.address)}
+                                                >
                                                     {truncateAddress(wallet.address)}
                                                 </span>
-                                                <button
-                                                    className="copy-button"
-                                                    onClick={() => copyToClipboard(wallet.address)}
-                                                    title="Copy full address"
-                                                    disabled={isBalancesLoading}
-                                                >
-                                                    📋
-                                                </button>
                                             </div>
                                         </td>
                                         <td className="balance-cell">{isBalancesLoading ? '...' : formatBalance(walletBalance.token_balance_ether)}</td>

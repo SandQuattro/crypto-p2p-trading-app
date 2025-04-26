@@ -6,6 +6,8 @@ import Navigation from './components/Navigation';
 import OrdersPage from './components/OrdersPage';
 import WalletsPage from './components/WalletsPage';
 import {fetchTradingPairs} from './services/api';
+import {NotificationProvider} from './context/NotificationContext';
+import NotificationContainer from './components/NotificationContainer';
 import './App.css';
 
 function App() {
@@ -139,16 +141,19 @@ function App() {
   );
 
   return (
-    <div className="app-container">
-      <header className="header">
-        <h1>Crypto P2P Trading</h1>
-        <Navigation activeTab={activeTab} onTabChange={handleTabChange} />
-      </header>
+    <NotificationProvider>
+      <div className="app-container">
+        <NotificationContainer />
+        <header className="header">
+          <h1>Crypto P2P Trading</h1>
+          <Navigation activeTab={activeTab} onTabChange={handleTabChange} />
+        </header>
 
-      {activeTab === 'trading' ? renderTradingView()
-        : activeTab === 'orders' ? <OrdersPage />
-          : <WalletsPage />}
-    </div>
+        {activeTab === 'trading' ? renderTradingView()
+          : activeTab === 'orders' ? <OrdersPage />
+            : <WalletsPage />}
+      </div>
+    </NotificationProvider>
   );
 }
 

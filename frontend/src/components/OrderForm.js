@@ -1,11 +1,13 @@
 import React, {useEffect, useState} from 'react';
 import {createOrder} from '../services/api';
+import {useNotification} from '../context/NotificationContext';
 import '../App.css';
 
 // Константа для срока действия заказа в часах
 const ORDER_EXPIRY_HOURS = 3;
 
 const OrderForm = ({ onOrderCreated, selectedUserId, orderCreated }) => {
+    const { addNotification } = useNotification();
     const [userId, setUserId] = useState(selectedUserId || '1');
     const [amount, setAmount] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -89,10 +91,11 @@ const OrderForm = ({ onOrderCreated, selectedUserId, orderCreated }) => {
     const copyToClipboard = (text) => {
         navigator.clipboard.writeText(text)
             .then(() => {
-                alert('Wallet address copied to clipboard!');
+                addNotification('Wallet address copied to clipboard!', 'info');
             })
             .catch(err => {
                 console.error('Failed to copy text: ', err);
+                addNotification('Failed to copy wallet address.', 'error');
             });
     };
 

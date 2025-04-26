@@ -1,8 +1,10 @@
 import React, {useEffect, useState} from 'react';
 import {deleteOrder, getTransactionIdForWallet, getUserOrders, getWalletDetails} from '../services/api';
+import {useNotification} from '../context/NotificationContext';
 import '../App.css';
 
 const OrdersList = ({ userId, refreshTrigger }) => {
+    const { addNotification } = useNotification();
     const [orders, setOrders] = useState([]);
     const [wallets, setWallets] = useState({});
     const [loading, setLoading] = useState(true);
@@ -103,10 +105,11 @@ const OrdersList = ({ userId, refreshTrigger }) => {
     const copyToClipboard = (text) => {
         navigator.clipboard.writeText(text)
             .then(() => {
-                alert('Wallet address copied to clipboard!');
+                addNotification('Wallet address copied to clipboard!', 'info');
             })
             .catch(err => {
                 console.error('Failed to copy text: ', err);
+                addNotification('Failed to copy wallet address.', 'error');
             });
     };
 
@@ -143,11 +146,12 @@ const OrdersList = ({ userId, refreshTrigger }) => {
                 delete newExpanded[orderId];
                 return newExpanded;
             });
-            alert("Order deleted successfully.");
+            addNotification("Order deleted successfully.", 'info');
         } catch (error) {
             console.error('Error deleting order:', error);
-            setError(`Failed to delete order ${orderId}. Please try again.`);
-            alert(`Error deleting order: ${error.message || 'Unknown error'}`); // Show error to user
+            const errorMessage = `Failed to delete order ${orderId}. Please try again.`;
+            setError(errorMessage);
+            addNotification(errorMessage, 'error');
         }
     };
 
