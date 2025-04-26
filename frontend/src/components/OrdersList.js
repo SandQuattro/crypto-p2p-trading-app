@@ -237,7 +237,7 @@ const OrdersList = ({ userId, refreshTrigger }) => {
                                                         <div className="payment-notice warning">
                                                             <div className="notice-icon">⚠️</div>
                                                             <div className="notice-text">
-                                                                Please note that your payment will be processed by a third-party payment service provider and not by Safelement Limited. The third-party payment service provider may block the payment and request additional information. You agree to provide us with such additional information or documents to comply with the request of the third-party payment service provider. In case of non-cooperation from your side, we will not be able to complete the payment or return it to you if you decide to proceed with a refund.
+                                                                Please note that we may block the payment and request additional information. You agree to provide us with such additional information or documents to comply with the request of us. In case of non-cooperation from your side, we will not be able to complete the payment or return it to you if you decide to proceed with a refund.
                                                             </div>
                                                         </div>
 
