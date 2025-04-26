@@ -120,11 +120,19 @@ const TradingChart = ({ symbol }) => {
         ws.current.close();
       }
 
-      // Extract hostname from BASE_URL (removing http:// protocol)
-      const wsHost = BASE_URL.replace(/^http:\/\//, '');
+      // Determine WebSocket protocol and host from BASE_URL
+      let wsProtocol = 'ws://';
+      let wsHost = BASE_URL;
+      if (BASE_URL.startsWith('https://')) {
+        wsProtocol = 'wss://';
+        wsHost = BASE_URL.substring(8); // Remove 'https://'
+      } else if (BASE_URL.startsWith('http://')) {
+        wsHost = BASE_URL.substring(7); // Remove 'http://'
+      }
 
-      console.log(`Setting up WebSocket for ${symbol}`);
-      const socket = new WebSocket(`ws://${wsHost}/ws/${symbol}`);
+      const wsUrl = `${wsProtocol}${wsHost}/ws/${symbol}`;
+      console.log(`Setting up WebSocket for ${symbol} to ${wsUrl}`);
+      const socket = new WebSocket(wsUrl);
 
       // Optimization: use binary format for WebSocket
       socket.binaryType = "arraybuffer";
