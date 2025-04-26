@@ -178,10 +178,15 @@ func (s *LocalAMLService) checkTransactionAmount(amount string) float64 {
 		return 0.5 // Средний риск по умолчанию при ошибке парсинга
 	}
 
+	// Конвертируем amount из "сырых" единиц (с 18 десятичными знаками)
+	// в стандартные единицы для сравнения с порогом
+	divisor := new(big.Float).SetFloat64(1e18)
+	adjustedAmount := new(big.Float).Quo(amountFloat, divisor)
+
 	// Проверяем, превышает ли сумма пороговое значение
-	if amountFloat.Cmp(s.transactionThreshold) >= 0 {
+	if adjustedAmount.Cmp(s.transactionThreshold) >= 0 {
 		// Вычисляем риск в зависимости от того, насколько превышен порог
-		ratio := new(big.Float).Quo(amountFloat, s.transactionThreshold)
+		ratio := new(big.Float).Quo(adjustedAmount, s.transactionThreshold)
 
 		// Конвертируем соотношение в float64 для расчета риска
 		ratioFloat, _ := ratio.Float64()

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -34,19 +35,39 @@ const (
 	writeTimeoutSeconds    = 15
 	idleTimeoutSeconds     = 60
 	shutdownTimeoutSeconds = 5
-	migrationsPath         = "./migrations"
 )
 
 func main() {
-	ctx := context.Background()
+	// Устанавливаем timezone UTC
+	time.Local = time.UTC
+
+	// Parse configuration
 	config, err := cfg.LoadConfig()
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	// Setup logging
 	opts := &slog.HandlerOptions{
-		AddSource: true,
-		Level:     slog.LevelDebug,
+		Level: slog.LevelInfo,
+	}
+
+	if config.Debug {
+		opts.Level = slog.LevelDebug
+	}
+
+	ctx := context.Background()
+
+	// Определяем путь к миграциям
+	migrationsPath := "./migrations"
+	if workDir, err := os.Getwd(); err == nil {
+		// Пробуем сначала относительный путь
+		if _, err := os.Stat(filepath.Join(workDir, "migrations")); !os.IsNotExist(err) {
+			migrationsPath = filepath.Join(workDir, "migrations")
+		} else if _, err := os.Stat(filepath.Join(workDir, "..", "migrations")); !os.IsNotExist(err) {
+			// Если не нашли, пробуем на уровень выше
+			migrationsPath = filepath.Join(workDir, "..", "migrations")
+		}
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, opts))
@@ -95,7 +116,7 @@ func main() {
 	}
 
 	// Инициализируем AML сервис
-	amlService := initAMLService(logger, config, pg)
+	amlService := initAMLService(logger, config, pg, transactionService)
 
 	// Initialize and run workers
 	initAndRunWorkers(ctx, logger, config, orderService, transactionService, walletService, amlService)
@@ -166,7 +187,7 @@ func main() {
 	logger.Info("Server exited properly")
 }
 
-func initAMLService(logger *slog.Logger, config *cfg.Config, pg *database.Postgres) *aml.AMLService {
+func initAMLService(logger *slog.Logger, config *cfg.Config, pg *database.Postgres, transactionService *usecases.TransactionServiceImpl) *aml.AMLService {
 	// Создаем AML репозиторий
 	amlRepository := amlrepo.NewAMLRepository(logger, pg)
 
@@ -202,6 +223,8 @@ func initAMLService(logger *slog.Logger, config *cfg.Config, pg *database.Postgr
 		ellipticService,
 		localAMLService,
 		amlbotService,
+		transactionService, // Используем transactionService из параметров
+		pg.Transactor,      // Добавляем транзактор
 	)
 
 	logger.Info("AML service initialized",

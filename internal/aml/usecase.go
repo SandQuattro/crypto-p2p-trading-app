@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	tx "github.com/Thiht/transactor/pgx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/aml/entities"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/aml/repository"
@@ -22,9 +23,16 @@ type AMLService struct {
 	elliptic    *services.EllipticService
 	local       *services.LocalAMLService
 	amlbot      *services.AMLBotService
+	txService   TransactionService
+	transactor  *tx.Transactor
 
 	// Семафор для ограничения одновременных внешних проверок
 	checkSemaphore chan struct{}
+}
+
+// TransactionService интерфейс для работы с транзакциями
+type TransactionService interface {
+	MarkTransactionAMLFlagged(ctx context.Context, txHash string) error
 }
 
 // NewAMLService создает новый сервис AML
@@ -35,6 +43,8 @@ func NewAMLService(
 	elliptic *services.EllipticService,
 	local *services.LocalAMLService,
 	amlbot *services.AMLBotService,
+	txService TransactionService,
+	transactor *tx.Transactor,
 ) *AMLService {
 	return &AMLService{
 		logger:         logger,
@@ -43,6 +53,8 @@ func NewAMLService(
 		elliptic:       elliptic,
 		local:          local,
 		amlbot:         amlbot,
+		txService:      txService,
+		transactor:     transactor,
 		checkSemaphore: make(chan struct{}, 5), // Максимум 5 одновременных внешних проверок
 	}
 }
@@ -206,18 +218,34 @@ func (s *AMLService) CheckTransaction(ctx context.Context, txHash common.Hash, s
 	// Дополняем информацию о всех использованных сервисах
 	finalResult.ExternalServicesUsed = servicesUsed
 
-	// Сохраняем результат в базу
-	if err := s.repo.SaveCheckResult(ctx, finalResult); err != nil {
-		s.logger.ErrorContext(ctx, "Failed to save AML check result",
-			"error", err,
-			"tx_hash", txHashStr)
-	}
+	// Сохраняем результат в базу и обновляем статус транзакции в одной транзакции
+	err = s.transactor.WithinTransaction(ctx, func(txCtx context.Context) error {
+		// Сохраняем результат проверки
+		if err := s.repo.SaveCheckResult(txCtx, finalResult); err != nil {
+			return fmt.Errorf("failed to save AML check result: %w", err)
+		}
 
-	// Отмечаем транзакцию как обработанную
-	if err := s.repo.MarkCheckAsProcessed(ctx, txHashStr); err != nil {
-		s.logger.ErrorContext(ctx, "Failed to mark transaction as processed",
+		// Отмечаем транзакцию как обработанную в таблице AML
+		if err := s.repo.MarkCheckAsProcessed(txCtx, txHashStr); err != nil {
+			return fmt.Errorf("failed to mark transaction as processed: %w", err)
+		}
+
+		// Если транзакция не прошла проверку, обновляем её статус в основной таблице transactions
+		if !finalResult.Approved && s.txService != nil {
+			if err := s.txService.MarkTransactionAMLFlagged(txCtx, txHashStr); err != nil {
+				return fmt.Errorf("failed to update transaction AML status: %w", err)
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		s.logger.ErrorContext(ctx, "Failed to save AML check results",
 			"error", err,
 			"tx_hash", txHashStr)
+		// Продолжаем работу несмотря на ошибку сохранения,
+		// так как сам результат проверки у нас уже есть
 	}
 
 	s.logger.InfoContext(ctx, "AML check completed",
@@ -289,7 +317,7 @@ func (s *AMLService) CheckAddress(ctx context.Context, address string) (*entitie
 		}
 	}
 
-	// Проверка через AMLBot, если доступно
+	// Проверка через AMLBot, если сервис активирован
 	if externalResult == nil && s.amlbot != nil && s.amlbot.IsEnabled() {
 		s.checkSemaphore <- struct{}{}
 		amlbotResult, amlbotErr := s.amlbot.CheckAddress(ctx, address)
