@@ -324,8 +324,8 @@
 .orders-table th:nth-child(3),
 /* Wallet Address column */
 .orders-table td:nth-child(3) {
-  width: 45%;
-  min-width: 350px;
+  width: 10%;
+  min-width: 250px;
   padding-left: 20px;
 }
 

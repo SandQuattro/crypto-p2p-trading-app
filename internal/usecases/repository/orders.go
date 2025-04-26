@@ -172,3 +172,28 @@ func (r *OrdersRepository) FindOrderByWalletAddress(ctx context.Context, walletA
 
 	return orderID, nil
 }
+
+// DeleteOrder removes a pending order specified by its ID.
+// It ensures that only pending orders can be deleted.
+func (r *OrdersRepository) DeleteOrder(ctx context.Context, orderID int) error {
+	result, err := r.db(ctx).Exec(ctx,
+		"DELETE FROM orders WHERE id = $1 AND status = 'pending'",
+		orderID)
+
+	if err != nil {
+		return fmt.Errorf("failed to execute delete order query: %w", err)
+	}
+
+	rowsAffected := result.RowsAffected()
+	if rowsAffected == 0 {
+		// This could mean the order doesn't exist, doesn't belong to the user,
+		// or is not in 'pending' status.
+		r.logger.Warn("Attempted to delete order, but no rows affected",
+			"order_id", orderID)
+		// Consider returning a specific error, e.g., entities.ErrNotFound or entities.ErrPermissionDenied
+		return fmt.Errorf("order %d not found, not pending, or permission denied", orderID)
+	}
+
+	r.logger.Info("Pending order deleted successfully", "order_id", orderID)
+	return nil
+}

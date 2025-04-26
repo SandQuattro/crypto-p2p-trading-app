@@ -13,4 +13,5 @@ type OrderService interface {
 	RemoveOldOrders(ctx context.Context, olderThan time.Duration) (int64, error)
 	MarkOrderForAMLReview(ctx context.Context, orderID int, notes string) error
 	GetOrderIdForWallet(ctx context.Context, walletAddress string) (int, error)
+	DeleteOrder(ctx context.Context, orderID int) error
 }

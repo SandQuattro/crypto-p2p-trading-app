@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {getTransactionIdForWallet, getUserOrders, getWalletDetails} from '../services/api';
+import {deleteOrder, getTransactionIdForWallet, getUserOrders, getWalletDetails} from '../services/api';
 import '../App.css';
 
 const OrdersList = ({ userId, refreshTrigger }) => {
@@ -94,9 +94,9 @@ const OrdersList = ({ userId, refreshTrigger }) => {
     const truncateAddress = (address) => {
         if (!address || address === "Address unavailable") return address;
 
-        // Keep first 15 and last 15 characters, add ellipsis in the middle
-        const start = address.substring(0, 15);
-        const end = address.substring(address.length - 15);
+        // Keep first and last 8 characters, add ellipsis in the middle
+        const start = address.substring(0, 8);
+        const end = address.substring(address.length - 8);
         return `${start}...${end}`;
     };
 
@@ -127,6 +127,30 @@ const OrdersList = ({ userId, refreshTrigger }) => {
         }));
     };
 
+    // Function to handle order deletion
+    const handleDeleteOrder = async (orderId) => {
+        if (!window.confirm("Are you sure you want to delete this pending order?")) {
+            return;
+        }
+
+        try {
+            await deleteOrder(orderId); // Call the API function
+            // Refresh the list by removing the deleted order from state
+            setOrders(prevOrders => prevOrders.filter(order => order.id !== orderId));
+            // Optionally close the expanded view if it was open
+            setExpandedOrders(prev => {
+                const newExpanded = { ...prev };
+                delete newExpanded[orderId];
+                return newExpanded;
+            });
+            alert("Order deleted successfully.");
+        } catch (error) {
+            console.error('Error deleting order:', error);
+            setError(`Failed to delete order ${orderId}. Please try again.`);
+            alert(`Error deleting order: ${error.message || 'Unknown error'}`); // Show error to user
+        }
+    };
+
     return (
         <div className="orders-list-container">
             <h2>Your Orders</h2>
@@ -143,10 +167,11 @@ const OrdersList = ({ userId, refreshTrigger }) => {
                             <tr>
                                 <th style={{ width: '5%', minWidth: '40px' }}>ID</th>
                                 <th style={{ width: '10%', minWidth: '80px' }}>Amount<br />(USDT)</th>
-                                <th style={{ width: '40%', minWidth: '300px' }}>Wallet Address</th>
+                                <th style={{ width: '15%', minWidth: '100px' }}>Wallet Address</th>
                                 <th style={{ width: '10%', minWidth: '100px', textAlign: 'center' }}>Status</th>
-                                <th style={{ width: '17.5%', minWidth: '140px' }}>Created</th>
-                                <th style={{ width: '17.5%', minWidth: '140px' }}>Updated</th>
+                                <th style={{ width: '10%', minWidth: '80px' }}>Created</th>
+                                <th style={{ width: '10%', minWidth: '80px' }}>Updated</th>
+                                <th style={{ width: '5%', minWidth: '60px' }}>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -176,21 +201,17 @@ const OrdersList = ({ userId, refreshTrigger }) => {
                                             <td>
                                                 <div className="wallet-address">
                                                     {walletAddress !== "Address unavailable" ? (
-                                                        <>
-                                                            <span className="address-text" title={walletAddress}>
-                                                                {truncateAddress(walletAddress)}
-                                                            </span>
-                                                            <button
-                                                                className="copy-button"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    copyToClipboard(walletAddress);
-                                                                }}
-                                                                title="Copy full address"
-                                                            >
-                                                                📋
-                                                            </button>
-                                                        </>
+                                                        <span
+                                                            className="address-text"
+                                                            title="Click to copy address"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                copyToClipboard(walletAddress);
+                                                            }}
+                                                            style={{ cursor: 'pointer' }}
+                                                        >
+                                                            {truncateAddress(walletAddress)}
+                                                        </span>
                                                     ) : (
                                                         "Address unavailable"
                                                     )}
@@ -214,23 +235,37 @@ const OrdersList = ({ userId, refreshTrigger }) => {
                                             </td>
                                             <td>{formatDate(order.created_at)}</td>
                                             <td>{formatDate(order.updated_at)}</td>
+                                            <td>
+                                                {isPending && (
+                                                    <button
+                                                        className="delete-button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDeleteOrder(order.id);
+                                                        }}
+                                                        title="Delete Order"
+                                                    >
+                                                        🗑️
+                                                    </button>
+                                                )}
+                                            </td>
                                         </tr>
 
                                         {isPending && isExpanded && (
                                             <tr className="payment-details-row">
-                                                <td colSpan="6">
+                                                <td colSpan="7">
                                                     <div className="payment-info-container">
                                                         <div className="wallet-address-container">
                                                             <span className="wallet-address-label">Payment address:</span>
                                                             <div className="wallet-address">
-                                                                <span className="address-text">{walletAddress}</span>
-                                                                <button
-                                                                    className="copy-button"
+                                                                <span
+                                                                    className="address-text"
+                                                                    title="Click to copy address"
                                                                     onClick={() => copyToClipboard(walletAddress)}
-                                                                    title="Copy full address"
+                                                                    style={{ cursor: 'pointer' }}
                                                                 >
-                                                                    📋
-                                                                </button>
+                                                                    {walletAddress}
+                                                                </span>
                                                             </div>
                                                         </div>
 

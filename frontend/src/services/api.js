@@ -129,3 +129,24 @@ export const getWalletBalance = async (address) => {
     throw error;
   }
 };
+
+// Delete a pending order
+export const deleteOrder = async (orderId) => {
+  try {
+    // Assuming the API requires authentication, headers might be needed
+    // e.g., const config = { headers: { Authorization: `Bearer ${token}` } };
+    // We need the user ID here, but the endpoint doesn't explicitly take it.
+    // Let's assume the backend gets the user ID from the auth context.
+    const response = await axios.delete(`${BASE_URL}/orders/${orderId}`);
+    return response.data; // Or handle success based on status code
+  } catch (error) {
+    console.error(`Error deleting order ${orderId}:`, error);
+    // Rethrow or handle specific error statuses
+    if (error.response && error.response.status === 404) {
+      throw new Error('Order not found or already processed.');
+    } else if (error.response && error.response.status === 403) {
+      throw new Error('You do not have permission to delete this order.');
+    }
+    throw error; // Rethrow for general handling
+  }
+};

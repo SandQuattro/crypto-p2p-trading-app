@@ -48,6 +48,7 @@ func (h *HTTPHandler) RegisterRoutes(router *mux.Router) {
 	// Orders
 	router.HandleFunc("/orders/user", h.GetUserOrders).Methods("GET")
 	router.HandleFunc("/create_order", h.CreateOrder).Methods("POST")
+	router.HandleFunc("/orders/{orderId:[0-9]+}", h.DeleteOrderHandler).Methods("DELETE")
 
 	// Wallets
 	router.HandleFunc("/wallet/generate", h.GenerateWallet).Methods("POST")
@@ -490,4 +491,43 @@ func (h *HTTPHandler) GetWalletBalancesHandler(w http.ResponseWriter, r *http.Re
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}
+}
+
+// DeleteOrderHandler handles requests to delete a pending order.
+func (h *HTTPHandler) DeleteOrderHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	orderIDStr, ok := vars["orderId"]
+	if !ok {
+		h.logger.Error("Order ID not found in path parameters")
+		http.Error(w, "Order ID is required", http.StatusBadRequest)
+		return
+	}
+
+	orderID, err := strconv.Atoi(orderIDStr)
+	if err != nil {
+		h.logger.Error("Invalid order ID format", "error", err, "order_id", orderIDStr)
+		http.Error(w, "Invalid order ID format", http.StatusBadRequest)
+		return
+	}
+
+	// Call the service layer to delete the order
+	err = h.orderService.DeleteOrder(r.Context(), orderID)
+	if err != nil {
+		// Log the internal error
+		h.logger.Error("Failed to delete order", "error", err, "order_id", orderID)
+
+		// Provide appropriate HTTP response based on the error type
+		// This requires the repository/service to return specific error types
+		// For now, using a generic error message, but consider refining this
+		if err.Error() == fmt.Sprintf("order %d not found or not deletable", orderID) { // Example check, replace with actual error handling
+			http.Error(w, err.Error(), http.StatusNotFound) // Or StatusForbidden/StatusBadRequest depending on logic
+		} else {
+			http.Error(w, "Failed to delete order", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Respond with success
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Order deleted successfully"})
 }

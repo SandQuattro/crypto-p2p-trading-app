@@ -15,6 +15,7 @@ type OrdersRepository interface {
 	RemoveOldOrders(ctx context.Context, olderThan time.Duration) (int64, error)
 	UpdateOrderAMLStatus(ctx context.Context, orderID int, status entities.AMLStatus, notes string) error
 	FindOrderByWalletAddress(ctx context.Context, walletAddress string) (int, error)
+	DeleteOrder(ctx context.Context, orderID int) error
 }
 
 type OrderService struct {
@@ -43,4 +44,9 @@ func (os *OrderService) MarkOrderForAMLReview(ctx context.Context, orderID int, 
 
 func (os *OrderService) GetOrderIdForWallet(ctx context.Context, walletAddress string) (int, error) {
 	return os.repo.FindOrderByWalletAddress(ctx, walletAddress)
+}
+
+// DeleteOrder deletes a pending order for a specific user
+func (os *OrderService) DeleteOrder(ctx context.Context, orderID int) error {
+	return os.repo.DeleteOrder(ctx, orderID)
 }
