@@ -51,6 +51,9 @@ function App() {
   useEffect(() => {
     if (!selectedPair) return;
 
+    // Log the environment variable to check if it's being picked up during build
+    console.log('REACT_APP_API_URL (App.js for WS):', process.env.REACT_APP_API_URL);
+
     // Determine WebSocket URL based on API_URL
     const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8080';
     // Replace http with ws, or https with wss

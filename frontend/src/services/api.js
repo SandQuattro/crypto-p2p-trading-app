@@ -1,5 +1,8 @@
 import axios from 'axios';
 
+// Log the environment variable to check if it's being picked up during build
+console.log('REACT_APP_API_URL (api.js):', process.env.REACT_APP_API_URL);
+
 // Use environment variable for API base URL, default to localhost for development
 export const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
 export const API_BASE_URL = `${BASE_URL}/data`;
