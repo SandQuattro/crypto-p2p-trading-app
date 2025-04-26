@@ -3,10 +3,17 @@
 # Stage 1: Build the React frontend
 FROM node:18-alpine AS frontend-builder
 WORKDIR /app/frontend
+
+# Declare the build argument
+ARG REACT_APP_API_URL
+
 COPY frontend/package*.json ./
 RUN npm install
 COPY frontend/ ./
-RUN npm run build
+
+# Use the build argument when running the build command
+# This makes the ARG available as process.env.REACT_APP_API_URL during the build
+RUN REACT_APP_API_URL=$REACT_APP_API_URL npm run build
 
 # Stage 2: Build the Go backend
 FROM golang:1.24-alpine AS backend-builder
