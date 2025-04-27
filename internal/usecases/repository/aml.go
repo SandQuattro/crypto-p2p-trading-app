@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 	"log/slog"
 	"time"
 
 	tx "github.com/Thiht/transactor/pgx"
 	"github.com/jackc/pgx/v5"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/aml/entities"
 	"github.com/sand/crypto-p2p-trading-app/backend/pkg/database"
 )
 

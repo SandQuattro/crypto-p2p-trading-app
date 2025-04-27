@@ -22,9 +22,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/aml"
-	amlrepo "github.com/sand/crypto-p2p-trading-app/backend/internal/aml/repository"
-	amlservices "github.com/sand/crypto-p2p-trading-app/backend/internal/aml/services"
+	amlservices "github.com/sand/crypto-p2p-trading-app/backend/internal/aml/clients"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/handlers"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases"
 )
@@ -189,9 +187,9 @@ func main() {
 	logger.Info("Server exited properly")
 }
 
-func initAMLService(logger *slog.Logger, config *cfg.Config, pg *database.Postgres, transactionService *usecases.TransactionServiceImpl) *aml.AMLService {
+func initAMLService(logger *slog.Logger, config *cfg.Config, pg *database.Postgres, transactionService *usecases.TransactionServiceImpl) *usecases.AMLService {
 	// Создаем AML репозиторий
-	amlRepository := amlrepo.NewAMLRepository(logger, pg)
+	amlRepository := repository.NewAMLRepository(logger, pg)
 
 	// Инициализируем сервисы проверки
 	chainalysisService := amlservices.NewChainalysisService(
@@ -218,7 +216,7 @@ func initAMLService(logger *slog.Logger, config *cfg.Config, pg *database.Postgr
 	)
 
 	// Создаем основной AML сервис
-	amlService := aml.NewAMLService(
+	amlService := usecases.NewAMLService(
 		logger,
 		amlRepository,
 		chainalysisService,

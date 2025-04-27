@@ -1,13 +1,12 @@
-package services
+package clients
 
 import (
 	"context"
 	"fmt"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 	"log/slog"
 	"net/http"
 	"time"
-
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/aml/entities"
 )
 
 // EllipticService представляет сервис для проверки транзакций через Elliptic (TRM Labs) API

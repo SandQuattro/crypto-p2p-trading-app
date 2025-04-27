@@ -1,8 +1,10 @@
-package aml
+package usecases
 
 import (
 	"context"
 	"fmt"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/repository"
 	"log/slog"
 	"math/big"
 	"sync"
@@ -10,19 +12,17 @@ import (
 
 	tx "github.com/Thiht/transactor/pgx"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/aml/entities"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/aml/repository"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/aml/services"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/aml/clients"
 )
 
 // AMLService представляет основной сервис для AML проверок
 type AMLService struct {
 	logger      *slog.Logger
 	repo        *repository.AMLRepository
-	chainalysis *services.ChainalysisService
-	elliptic    *services.EllipticService
-	local       *services.LocalAMLService
-	amlbot      *services.AMLBotService
+	chainalysis *clients.ChainalysisService
+	elliptic    *clients.EllipticService
+	local       *clients.LocalAMLService
+	amlbot      *clients.AMLBotService
 	txService   TransactionService
 	transactor  *tx.Transactor
 
@@ -39,10 +39,10 @@ type TransactionService interface {
 func NewAMLService(
 	logger *slog.Logger,
 	repo *repository.AMLRepository,
-	chainalysis *services.ChainalysisService,
-	elliptic *services.EllipticService,
-	local *services.LocalAMLService,
-	amlbot *services.AMLBotService,
+	chainalysis *clients.ChainalysisService,
+	elliptic *clients.EllipticService,
+	local *clients.LocalAMLService,
+	amlbot *clients.AMLBotService,
 	txService TransactionService,
 	transactor *tx.Transactor,
 ) *AMLService {

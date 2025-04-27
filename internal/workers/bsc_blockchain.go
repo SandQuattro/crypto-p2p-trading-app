@@ -14,7 +14,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sand/crypto-p2p-trading-app/backend/config"
-	amlEntities "github.com/sand/crypto-p2p-trading-app/backend/internal/aml/entities"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -103,7 +102,7 @@ type TransactionService interface {
 
 // AMLService определяет интерфейс для AML проверок
 type AMLService interface {
-	CheckTransaction(ctx context.Context, txHash common.Hash, sourceAddress, destinationAddress string, amount *big.Int) (*amlEntities.AMLCheckResult, error)
+	CheckTransaction(ctx context.Context, txHash common.Hash, sourceAddress, destinationAddress string, amount *big.Int) (*entities.AMLCheckResult, error)
 }
 
 // WalletService defines the interface for wallet operations.

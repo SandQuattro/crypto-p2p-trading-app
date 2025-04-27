@@ -1,14 +1,13 @@
-package services
+package clients
 
 import (
 	"context"
 	"fmt"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 	"log/slog"
 	"math/big"
 	"strings"
 	"time"
-
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/aml/entities"
 )
 
 // LocalAMLService представляет сервис для локальных AML проверок без обращения к внешним API
