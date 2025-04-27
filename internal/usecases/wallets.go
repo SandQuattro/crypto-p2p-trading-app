@@ -98,7 +98,7 @@ type WalletsRepository interface {
 	IsWalletTracked(ctx context.Context, address string) (bool, error)
 	GetAllTrackedWallets(ctx context.Context) ([]entities.Wallet, error)
 	GetLastWalletIndexForUser(ctx context.Context, userID int64) (uint32, error)
-	TrackWalletWithUserAndIndex(ctx context.Context, address string, derivationPath string, userID int64, index uint32) (int, error)
+	TrackWalletWithUserAndIndex(ctx context.Context, address string, derivationPath string, userID int64, index uint32, isTestNet bool) (int, error)
 	GetAllTrackedWalletsForUser(ctx context.Context, userID int64) ([]entities.Wallet, error)
 }
 
@@ -106,6 +106,8 @@ var _ WalletsRepository = (*repository.WalletsRepository)(nil)
 
 type WalletService struct {
 	logger *slog.Logger
+
+	isTestNet bool
 
 	erc20ABI, smartContractAddress string
 
@@ -141,13 +143,6 @@ func NewWalletService(
 	// Get the appropriate USDT contract address based on mode
 	contractAddress := GetUSDTContractAddress()
 
-	// Log which mode we're operating in
-	if shared.IsBlockchainDebugMode() {
-		logger.Warn("Wallet service initialized in DEBUG mode (using BSC Testnet)")
-	} else {
-		logger.Warn("Wallet service initialized in PRODUCTION mode (using BSC Mainnet)")
-	}
-
 	ws := &WalletService{
 		logger: logger,
 
@@ -167,6 +162,15 @@ func NewWalletService(
 
 		// Мониторинг балансов кошельков
 		walletBalances: make(map[string]*entities.WalletBalance),
+	}
+
+	// Log which mode we're operating in
+	if shared.IsBlockchainDebugMode() {
+		ws.isTestNet = true
+		logger.Warn("Wallet service initialized in DEBUG mode (using BSC Testnet)")
+	} else {
+		ws.isTestNet = false
+		logger.Warn("Wallet service initialized in PRODUCTION mode (using BSC Mainnet)")
 	}
 
 	// Load tracked wallets from database into memory cache
@@ -247,7 +251,7 @@ func (bsc *WalletService) GenerateWalletForUser(ctx context.Context, userID int6
 
 	// Track this wallet in database with the user ID and index
 	var walletID int
-	if walletID, err = bsc.repo.TrackWalletWithUserAndIndex(ctx, address, derivationPath, userID, newIndex); err != nil {
+	if walletID, err = bsc.repo.TrackWalletWithUserAndIndex(ctx, address, derivationPath, userID, newIndex, bsc.isTestNet); err != nil {
 		return 0, "", fmt.Errorf("failed to track wallet: %w", err)
 	}
 
@@ -272,7 +276,7 @@ func (bsc *WalletService) TrackWalletForUser(ctx context.Context, address string
 	newIndex := lastIndex + 1
 
 	// Track this wallet in database with the user ID and index
-	if _, err := bsc.repo.TrackWalletWithUserAndIndex(ctx, address, derivationPath, userID, newIndex); err != nil {
+	if _, err = bsc.repo.TrackWalletWithUserAndIndex(ctx, address, derivationPath, userID, newIndex, bsc.isTestNet); err != nil {
 		return fmt.Errorf("failed to track wallet: %w", err)
 	}
 
@@ -330,6 +334,7 @@ func (bsc *WalletService) GetWalletDetailsExtendedForUser(ctx context.Context, u
 			ID:        int64(wallet.ID),
 			UserID:    wallet.UserID,
 			Address:   wallet.Address,
+			IsTestnet: wallet.IsTestnet,
 			CreatedAt: wallet.CreatedAt,
 		})
 	}

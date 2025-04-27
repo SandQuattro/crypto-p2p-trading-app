@@ -31,16 +31,19 @@ func NewWalletsRepository(logger *slog.Logger, pg *database.Postgres) *WalletsRe
 
 // FindWalletByAddress retrieves a wallet by its address.
 func (r *WalletsRepository) FindWalletByAddress(ctx context.Context, address string) (*entities.Wallet, error) {
-	query := `SELECT id, address, derivation_path, created_at 
+	query := `SELECT id, user_id, address, derivation_path, wallet_index, created_at, is_testnet 
               FROM wallets 
               WHERE address = $1`
 
 	var wallet entities.Wallet
 	err := r.db(ctx).QueryRow(ctx, query, address).Scan(
 		&wallet.ID,
+		&wallet.UserID,
 		&wallet.Address,
 		&wallet.DerivationPath,
+		&wallet.WalletIndex,
 		&wallet.CreatedAt,
+		&wallet.IsTestnet,
 	)
 
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -55,16 +58,19 @@ func (r *WalletsRepository) FindWalletByAddress(ctx context.Context, address str
 
 // FindWalletByID retrieves a wallet by its id.
 func (r *WalletsRepository) FindWalletByID(ctx context.Context, id int) (*entities.Wallet, error) {
-	query := `SELECT id, address, derivation_path, created_at 
+	query := `SELECT id, user_id, address, derivation_path, wallet_index, created_at, is_testnet 
               FROM wallets 
               WHERE id = $1`
 
 	var wallet entities.Wallet
 	err := r.db(ctx).QueryRow(ctx, query, id).Scan(
 		&wallet.ID,
+		&wallet.UserID,
 		&wallet.Address,
 		&wallet.DerivationPath,
+		&wallet.WalletIndex,
 		&wallet.CreatedAt,
+		&wallet.IsTestnet,
 	)
 
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -89,7 +95,7 @@ func (r *WalletsRepository) IsWalletTracked(ctx context.Context, address string)
 
 // GetAllTrackedWallets retrieves all tracked wallet addresses.
 func (r *WalletsRepository) GetAllTrackedWallets(ctx context.Context) ([]entities.Wallet, error) {
-	query := `SELECT id, user_id, address, derivation_path, wallet_index, created_at 
+	query := `SELECT id, user_id, address, derivation_path, wallet_index, created_at, is_testnet 
               FROM wallets 
               ORDER BY id`
 
@@ -126,7 +132,7 @@ func (r *WalletsRepository) GetLastWalletIndexForUser(ctx context.Context, userI
 }
 
 // TrackWalletWithUserAndIndex adds a wallet address to the tracking system with a specific user and index
-func (r *WalletsRepository) TrackWalletWithUserAndIndex(ctx context.Context, address string, derivationPath string, userID int64, index uint32) (int, error) {
+func (r *WalletsRepository) TrackWalletWithUserAndIndex(ctx context.Context, address string, derivationPath string, userID int64, index uint32, isTestnet bool) (int, error) {
 	// Check if wallet already exists
 	exists, err := r.IsWalletTracked(ctx, address)
 	if err != nil {
@@ -141,8 +147,8 @@ func (r *WalletsRepository) TrackWalletWithUserAndIndex(ctx context.Context, add
 	var id int
 	// Insert new wallet with user ID and index
 	err = r.db(ctx).QueryRow(ctx,
-		"INSERT INTO wallets (address, derivation_path, user_id, wallet_index, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING id",
-		address, derivationPath, userID, index, time.Now()).Scan(&id)
+		"INSERT INTO wallets (address, derivation_path, user_id, wallet_index, created_at, is_testnet) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+		address, derivationPath, userID, index, time.Now(), isTestnet).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert wallet: %w", err)
 	}
@@ -153,7 +159,7 @@ func (r *WalletsRepository) TrackWalletWithUserAndIndex(ctx context.Context, add
 
 // GetAllTrackedWalletsForUser retrieves all tracked wallet addresses for a specific user.
 func (r *WalletsRepository) GetAllTrackedWalletsForUser(ctx context.Context, userID int64) ([]entities.Wallet, error) {
-	query := `SELECT id, address, derivation_path, user_id, wallet_index, created_at 
+	query := `SELECT id, user_id, address, derivation_path, wallet_index, created_at, is_testnet 
               FROM wallets 
               WHERE user_id = $1
               ORDER BY wallet_index`

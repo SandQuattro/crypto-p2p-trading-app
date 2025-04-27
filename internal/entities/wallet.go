@@ -8,10 +8,11 @@ import (
 // Wallet represents a tracked wallet in our system
 type Wallet struct {
 	ID             int       `db:"id"`
-	UserID         int       `db:"user_id"`
+	UserID         int64     `db:"user_id"`
 	Address        string    `db:"address"`
 	DerivationPath string    `db:"derivation_path"`
 	WalletIndex    uint32    `db:"wallet_index"`
+	IsTestnet      bool      `db:"is_testnet"`
 	CreatedAt      time.Time `db:"created_at"`
 }
 
@@ -24,8 +25,9 @@ type WalletDetail struct {
 // WalletDetailExtended represents wallet information with ID, address, user ID and creation date
 type WalletDetailExtended struct {
 	ID        int64     `json:"id"`
-	UserID    int       `json:"user_id"`
+	UserID    int64     `json:"user_id"`
 	Address   string    `json:"address"`
+	IsTestnet bool      `json:"is_testnet"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

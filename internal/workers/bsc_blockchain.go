@@ -60,7 +60,7 @@ const (
 	TxStatusFailed    = "failed"
 )
 
-// BSC WebSocket endpoints
+// GetBSCWebSocketEndpoints BSC WebSocket endpoints
 func GetBSCWebSocketEndpoints() []string {
 	if shared.IsBlockchainDebugMode() {
 		// Testnet WebSocket endpoints for debug/test mode
