@@ -75,3 +75,9 @@ docker:
 	@echo "Building and running in Docker..."
 	$(MAKE) docker-build
 	$(MAKE) docker-run
+
+docker-hub:
+	@echo "Pushing Docker image to Docker Hub..."
+	docker build -t crypto-p2p-trading-app .
+	docker tag crypto-p2p-trading-app sandquattro/crypto-p2p-trading-app:latest
+	docker push sandquattro/crypto-p2p-trading-app:latest
