@@ -208,11 +208,10 @@ func (s *AMLService) CheckTransaction(ctx context.Context, txHash common.Hash, s
 
 	// Если не получили ни одного результата, возвращаем ошибку
 	if finalResult == nil {
-		errMsg := "all AML checks failed"
 		if len(errors) > 0 {
-			errMsg = fmt.Sprintf("%s: %v", errMsg, errors[0])
+			return nil, fmt.Errorf("all AML checks failed: %v", errors[0])
 		}
-		return nil, fmt.Errorf(errMsg)
+		return nil, fmt.Errorf("all AML checks failed")
 	}
 
 	// Дополняем информацию о всех использованных сервисах
