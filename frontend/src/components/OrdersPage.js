@@ -4,7 +4,7 @@ import OrdersList from './OrdersList';
 import Modal from './Modal';
 import '../App.css';
 
-const OrdersPage = () => {
+const OrdersPage = ({ lastPrice, symbol }) => {
     const [userId, setUserId] = useState('1');
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -55,6 +55,15 @@ const OrdersPage = () => {
                 </select>
             </div>
 
+            {symbol && (
+                <div className="current-market-info">
+                    <p>Current Price for {symbol}: {lastPrice ? lastPrice.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }) : 'Loading...'}</p>
+                </div>
+            )}
+
             <button className="add-order-button" onClick={openModal}>
                 Create New Order
             </button>
@@ -72,6 +81,8 @@ const OrdersPage = () => {
                     onOrderCreated={handleOrderCreated}
                     selectedUserId={userId}
                     orderCreated={orderCreated}
+                    currentPrice={lastPrice}
+                    currentSymbol={symbol}
                 />
                 {orderCreated && (
                     <div className="modal-footer">

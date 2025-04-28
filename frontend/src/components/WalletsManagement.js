@@ -3,7 +3,7 @@ import {getWalletBalances, getWalletDetails, getWalletDetailsExtended} from '../
 import {useNotification} from '../context/NotificationContext';
 import '../App.css';
 
-const WalletsManagement = ({ userId }) => {
+const WalletsManagement = ({ userId, lastPrice, symbol }) => {
     const { addNotification } = useNotification();
     const [wallets, setWallets] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -11,6 +11,31 @@ const WalletsManagement = ({ userId }) => {
     const [error, setError] = useState('');
     const [balances, setBalances] = useState({});
     const [refreshTrigger, setRefreshTrigger] = useState(0);
+    const [estimatedValues, setEstimatedValues] = useState({});
+
+    // Обновляем рассчитанную стоимость при изменении последней цены
+    useEffect(() => {
+        if (lastPrice && symbol && Object.keys(balances).length > 0) {
+            const newEstimatedValues = {};
+            const cryptoCurrency = symbol.replace('RUB', '');
+
+            Object.keys(balances).forEach(address => {
+                const walletBalance = balances[address];
+                if (walletBalance && walletBalance.token_balance_ether) {
+                    // Предполагаем, что token_balance_ether это USDT баланс
+                    const tokenBalance = parseFloat(walletBalance.token_balance_ether) || 0;
+
+                    // Рассчитываем стоимость криптовалюты в USDT
+                    const cryptoEstimatedValue = tokenBalance / lastPrice;
+                    newEstimatedValues[address] = {
+                        [cryptoCurrency]: cryptoEstimatedValue
+                    };
+                }
+            });
+
+            setEstimatedValues(newEstimatedValues);
+        }
+    }, [lastPrice, symbol, balances]);
 
     const loadBalances = async () => {
         setIsBalancesLoading(true);
@@ -124,6 +149,7 @@ const WalletsManagement = ({ userId }) => {
     return (
         <div className="wallets-management-container">
             <h2>Wallets Management</h2>
+
             <button
                 className="refresh-all-button"
                 onClick={handleRefreshAll}
@@ -148,6 +174,7 @@ const WalletsManagement = ({ userId }) => {
                                 <th style={{ width: '25%', minWidth: '200px' }}>Wallet Address</th>
                                 <th style={{ width: '10%', minWidth: '100px', textAlign: 'left' }}>USDT Balance</th>
                                 <th style={{ width: '15%', minWidth: '120px', textAlign: 'left', paddingRight: '25px' }}>BNB Balance</th>
+                                {symbol && <th style={{ width: '10%', minWidth: '100px', textAlign: 'left' }}>{symbol.replace('RUB', '')} Estimate</th>}
                                 <th style={{ width: '8%', minWidth: '60px' }}>Testnet</th>
                                 <th style={{ width: '15%', minWidth: '140px' }}>Created Date</th>
                                 <th style={{ width: '10%', minWidth: '100px' }}>Actions</th>
@@ -160,6 +187,9 @@ const WalletsManagement = ({ userId }) => {
                                     bnb_balance_ether: '0',
                                     last_checked: '-'
                                 };
+
+                                const estimatedValue = estimatedValues[wallet.address];
+                                const cryptoEstimate = estimatedValue && symbol ? estimatedValue[symbol.replace('RUB', '')] : null;
 
                                 return (
                                     <tr key={wallet.id}>
@@ -179,6 +209,15 @@ const WalletsManagement = ({ userId }) => {
                                         </td>
                                         <td className="balance-cell">{isBalancesLoading ? '...' : formatBalance(walletBalance.token_balance_ether)}</td>
                                         <td className="balance-cell">{isBalancesLoading ? '...' : formatBalance(walletBalance.bnb_balance_ether, 18)}</td>
+                                        {symbol && (
+                                            <td className="balance-cell">{
+                                                isBalancesLoading
+                                                    ? '...'
+                                                    : (cryptoEstimate
+                                                        ? formatBalance(cryptoEstimate.toString(), 8)
+                                                        : '0.00000000')
+                                            }</td>
+                                        )}
                                         <td>{wallet.is_testnet ? 'Yes' : 'No'}</td>
                                         <td>{wallet.created_at ? formatDate(wallet.created_at) : 'N/A'}</td>
                                         <td>

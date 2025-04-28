@@ -14,6 +14,7 @@ services:
       - RPC_URL=${RPC_URL}
       - REQUIRED_CONFIRMATIONS=${REQUIRED_CONFIRMATIONS}
       - BLOCKCHAIN_DEBUG_MODE=${BLOCKCHAIN_DEBUG_MODE:-false}   # Use value from .env, default to false if not set
+      - REACT_APP_API_URL=${REACT_APP_API_URL}
     depends_on:
       postgres:
         condition: service_healthy

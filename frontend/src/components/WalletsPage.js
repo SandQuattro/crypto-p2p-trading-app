@@ -2,7 +2,7 @@ import React, {useState} from 'react';
 import WalletsManagement from './WalletsManagement';
 import '../App.css';
 
-const WalletsPage = () => {
+const WalletsPage = ({ lastPrice, symbol }) => {
     const [userId, setUserId] = useState('1');
 
     const handleUserIdChange = (e) => {
@@ -27,8 +27,17 @@ const WalletsPage = () => {
                 </select>
             </div>
 
+            {symbol && (
+                <div className="current-market-info">
+                    <p>Current Price for {symbol}: {lastPrice ? lastPrice.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }) : 'Загрузка...'}</p>
+                </div>
+            )}
+
             <div className="wallets-management-section">
-                <WalletsManagement userId={userId} />
+                <WalletsManagement userId={userId} lastPrice={lastPrice} symbol={symbol} />
             </div>
         </div>
     );

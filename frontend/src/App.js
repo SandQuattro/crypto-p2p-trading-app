@@ -1,11 +1,11 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import TradingChart from './components/TradingChart';
 import PairSelector from './components/PairSelector';
 import PriceDisplay from './components/PriceDisplay';
 import Navigation from './components/Navigation';
 import OrdersPage from './components/OrdersPage';
 import WalletsPage from './components/WalletsPage';
-import {fetchTradingPairs} from './services/api';
+import {API_BASE_URL, BASE_URL, fetchTradingPairs} from './services/api';
 import {NotificationProvider} from './context/NotificationContext';
 import NotificationContainer from './components/NotificationContainer';
 import './App.css';
@@ -20,6 +20,9 @@ function App() {
   });
   const [isLoaded, setIsLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState('trading');
+  const [candleData, setCandleData] = useState([]);
+  const [lastCandle, setLastCandle] = useState(null);
+  const ws = useRef(null);
 
   useEffect(() => {
     const loadTradingPairs = async () => {
@@ -50,40 +53,119 @@ function App() {
     loadTradingPairs();
   }, []);
 
+  // Fetch historical candle data when symbol changes
+  useEffect(() => {
+    const fetchCandleData = async () => {
+      if (!selectedPair) return;
+
+      try {
+        console.log(`Fetching candles for ${selectedPair}`);
+        const response = await fetch(`${API_BASE_URL}/candles/${selectedPair}`);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        console.log(`Received ${data.length} candles for ${selectedPair}`);
+
+        // Format data for the chart
+        const formattedData = data.map(candle => ({
+          time: candle.time / 1000, // Convert from milliseconds to seconds
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+        }));
+
+        setCandleData(formattedData);
+      } catch (error) {
+        console.error('Error fetching candle data:', error);
+      }
+    };
+
+    fetchCandleData();
+  }, [selectedPair]);
+
+  // Setup WebSocket connection
   useEffect(() => {
     if (!selectedPair) return;
 
-    // Log the environment variable to check if it's being picked up during build
     console.log('REACT_APP_API_URL (App.js for WS):', process.env.REACT_APP_API_URL);
 
+    // Close existing WebSocket if it exists
+    if (ws.current) {
+      console.log(`Closing existing WebSocket for ${selectedPair}`);
+      ws.current.close();
+    }
+
     // Determine WebSocket URL based on API_URL
-    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8080';
-    // Replace http with ws, or https with wss
-    const wsUrl = apiUrl.replace(/^(http)/, 'ws');
+    let wsProtocol = 'ws://';
+    let wsHost = BASE_URL;
+    if (BASE_URL.startsWith('https://')) {
+      wsProtocol = 'wss://';
+      wsHost = BASE_URL.substring(8); // Remove 'https://'
+    } else if (BASE_URL.startsWith('http://')) {
+      wsHost = BASE_URL.substring(7); // Remove 'http://'
+    }
 
-    console.log("Connecting WebSocket to:", `${wsUrl}/ws/${selectedPair}`); // Debug log
+    const wsUrl = `${wsProtocol}${wsHost}/ws/${selectedPair}`;
+    console.log(`Setting up WebSocket for ${selectedPair} to ${wsUrl}`);
+    const socket = new WebSocket(wsUrl);
 
-    const ws = new WebSocket(`${wsUrl}/ws/${selectedPair}`);
+    // Optimization: use binary format for WebSocket
+    socket.binaryType = "arraybuffer";
 
-    ws.onopen = () => {
-      console.log('WebSocket connection opened');
+    socket.onopen = () => {
+      console.log(`WebSocket connected for ${selectedPair}`);
     };
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      setPairData({
-        lastPrice: data.lastPrice,
-        priceChange: data.priceChange,
-        ordersPerSecond: data.ordersPerSecond || 0
-      });
+    socket.onmessage = (event) => {
+      try {
+        const update = JSON.parse(event.data);
+
+        // Update price data
+        if (update.lastPrice !== undefined) {
+          setPairData({
+            lastPrice: update.lastPrice,
+            priceChange: update.priceChange,
+            ordersPerSecond: update.ordersPerSecond || 0
+          });
+        }
+
+        // Update candle data
+        if (update.lastCandle) {
+          const candle = update.lastCandle;
+
+          const formattedCandle = {
+            time: candle.time / 1000, // Convert from milliseconds to seconds
+            open: candle.open,
+            high: candle.high,
+            low: candle.low,
+            close: candle.close,
+          };
+
+          setLastCandle(formattedCandle);
+        }
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error);
+      }
     };
 
-    ws.onerror = (error) => {
+    socket.onclose = () => {
+      console.log(`WebSocket disconnected for ${selectedPair}`);
+    };
+
+    socket.onerror = (error) => {
       console.error('WebSocket error:', error);
     };
 
+    ws.current = socket;
+
+    // Cleanup function
     return () => {
-      ws.close();
+      if (ws.current) {
+        console.log(`Closing WebSocket for ${selectedPair}`);
+        ws.current.close();
+      }
     };
   }, [selectedPair]);
 
@@ -134,6 +216,8 @@ function App() {
           <TradingChart
             key={selectedPair}
             symbol={selectedPair}
+            candleData={candleData}
+            lastCandle={lastCandle}
           />
         </div>
       )}
@@ -150,8 +234,8 @@ function App() {
         </header>
 
         {activeTab === 'trading' ? renderTradingView()
-          : activeTab === 'orders' ? <OrdersPage />
-            : <WalletsPage />}
+          : activeTab === 'orders' ? <OrdersPage lastPrice={pairData.lastPrice} symbol={selectedPair} />
+            : <WalletsPage lastPrice={pairData.lastPrice} symbol={selectedPair} />}
       </div>
     </NotificationProvider>
   );

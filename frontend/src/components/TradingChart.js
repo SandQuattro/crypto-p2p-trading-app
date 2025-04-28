@@ -1,21 +1,21 @@
 import React, {useEffect, useRef} from 'react';
 import {createChart} from 'lightweight-charts';
-import {API_BASE_URL, BASE_URL} from '../services/api';
 
-const TradingChart = ({ symbol }) => {
+const TradingChart = ({ symbol, candleData, lastCandle }) => {
   const chartContainerRef = useRef(null);
-  const ws = useRef(null);
+  const chartRef = useRef(null);
+  const candleSeriesRef = useRef(null);
 
-  // Re-create chart whenever symbol changes
+  // Создаем график при изменении symbol
   useEffect(() => {
     if (!chartContainerRef.current || !symbol) return;
 
     console.log(`Creating new chart for ${symbol}`);
 
-    // Clear container before creating a new chart
+    // Очищаем контейнер перед созданием нового графика
     chartContainerRef.current.innerHTML = '';
 
-    // Create new chart
+    // Создаем новый график
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
       height: 500,
@@ -43,7 +43,7 @@ const TradingChart = ({ symbol }) => {
       },
     });
 
-    // Create candlestick series
+    // Создаем серию свечей
     const candleSeries = chart.addCandlestickSeries({
       upColor: '#26a69a',
       downColor: '#ef5350',
@@ -52,134 +52,11 @@ const TradingChart = ({ symbol }) => {
       wickDownColor: '#ef5350',
     });
 
-    // Fetch historical candle data
-    const fetchCandleData = async () => {
-      try {
-        console.log(`Fetching candles for ${symbol}`);
-        const response = await fetch(`${API_BASE_URL}/candles/${symbol}`);
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        console.log(`Received ${data.length} candles for ${symbol}`);
+    // Сохраняем ссылки для использования в других эффектах
+    chartRef.current = chart;
+    candleSeriesRef.current = candleSeries;
 
-        // Format data for the chart
-        const formattedData = data.map(candle => ({
-          time: candle.time / 1000, // Convert from milliseconds to seconds
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-        }));
-
-        if (formattedData.length > 0) {
-          console.log(`Setting ${formattedData.length} candles for ${symbol}`);
-
-          // Use optimized method to set data
-          candleSeries.setData(formattedData);
-
-          // Set visible range to 3 hours
-          const lastTime = formattedData[formattedData.length - 1].time;
-          const threeHoursAgo = lastTime - 3600 * 3; // 3600 seconds = 1 hour, * 3 = 3 hours
-
-          // Optimize setting the visible range
-          chart.timeScale().setVisibleRange({
-            from: threeHoursAgo,
-            to: lastTime,
-          });
-
-          // Force chart update
-          chart.applyOptions({
-            timeScale: {
-              rightOffset: 10,
-              barSpacing: 6,
-              fixLeftEdge: true,
-              lockVisibleTimeRangeOnResize: true,
-              rightBarStaysOnScroll: true,
-              borderVisible: false,
-              visible: true,
-              timeVisible: true,
-              secondsVisible: false
-            }
-          });
-        } else {
-          console.error(`No candle data received for ${symbol}`);
-        }
-      } catch (error) {
-        console.error('Error fetching candle data:', error);
-      }
-    };
-
-    fetchCandleData();
-
-    // Setup WebSocket connection for real-time updates
-    const setupWebSocket = () => {
-      // Close existing WebSocket if it exists
-      if (ws.current) {
-        console.log(`Closing existing WebSocket for ${symbol}`);
-        ws.current.close();
-      }
-
-      // Determine WebSocket protocol and host from BASE_URL
-      let wsProtocol = 'ws://';
-      let wsHost = BASE_URL;
-      if (BASE_URL.startsWith('https://')) {
-        wsProtocol = 'wss://';
-        wsHost = BASE_URL.substring(8); // Remove 'https://'
-      } else if (BASE_URL.startsWith('http://')) {
-        wsHost = BASE_URL.substring(7); // Remove 'http://'
-      }
-
-      const wsUrl = `${wsProtocol}${wsHost}/ws/${symbol}`;
-      console.log(`Setting up WebSocket for ${symbol} to ${wsUrl}`);
-      const socket = new WebSocket(wsUrl);
-
-      // Optimization: use binary format for WebSocket
-      socket.binaryType = "arraybuffer";
-
-      socket.onopen = () => {
-        console.log(`WebSocket connected for ${symbol}`);
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const update = JSON.parse(event.data);
-
-          // Update only if there is new candle data
-          if (update.lastCandle) {
-            const candle = update.lastCandle;
-
-            // Optimization: check if we need to update the series
-            const formattedCandle = {
-              time: candle.time / 1000, // Convert from milliseconds to seconds
-              open: candle.open,
-              high: candle.high,
-              low: candle.low,
-              close: candle.close,
-            };
-
-            // Use more efficient update method
-            candleSeries.update(formattedCandle);
-          }
-        } catch (error) {
-          console.error('Error processing WebSocket message:', error);
-        }
-      };
-
-      socket.onclose = () => {
-        console.log(`WebSocket disconnected for ${symbol}`);
-      };
-
-      socket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
-
-      ws.current = socket;
-    };
-
-    setupWebSocket();
-
-    // Handle window resize
+    // Обработка изменения размера окна
     const handleResize = () => {
       chart.applyOptions({
         width: chartContainerRef.current.clientWidth,
@@ -188,17 +65,59 @@ const TradingChart = ({ symbol }) => {
 
     window.addEventListener('resize', handleResize);
 
-    // Cleanup function
+    // Очистка при размонтировании
     return () => {
       console.log(`Cleaning up chart for ${symbol}`);
       window.removeEventListener('resize', handleResize);
-      if (ws.current) {
-        console.log(`Closing WebSocket for ${symbol}`);
-        ws.current.close();
-      }
       chart.remove();
+      chartRef.current = null;
+      candleSeriesRef.current = null;
     };
   }, [symbol]);
+
+  // Обновляем данные свечей при получении новых
+  useEffect(() => {
+    if (!candleSeriesRef.current || !candleData || candleData.length === 0) return;
+
+    console.log(`Setting ${candleData.length} candles for ${symbol}`);
+
+    // Устанавливаем данные
+    candleSeriesRef.current.setData(candleData);
+
+    // Устанавливаем видимый диапазон (3 часа)
+    if (chartRef.current && candleData.length > 0) {
+      const lastTime = candleData[candleData.length - 1].time;
+      const threeHoursAgo = lastTime - 3600 * 3; // 3600 секунд = 1 час, * 3 = 3 часа
+
+      chartRef.current.timeScale().setVisibleRange({
+        from: threeHoursAgo,
+        to: lastTime,
+      });
+
+      // Принудительное обновление графика
+      chartRef.current.applyOptions({
+        timeScale: {
+          rightOffset: 10,
+          barSpacing: 6,
+          fixLeftEdge: true,
+          lockVisibleTimeRangeOnResize: true,
+          rightBarStaysOnScroll: true,
+          borderVisible: false,
+          visible: true,
+          timeVisible: true,
+          secondsVisible: false
+        }
+      });
+    }
+  }, [candleData, symbol]);
+
+  // Обновляем последнюю свечу при изменении
+  useEffect(() => {
+    if (!candleSeriesRef.current || !lastCandle) return;
+
+    // Обновляем только последнюю свечу
+    candleSeriesRef.current.update(lastCandle);
+  }, [lastCandle]);
 
   return (
     <div className="chart-container" ref={chartContainerRef} />

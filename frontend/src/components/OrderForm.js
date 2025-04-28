@@ -6,7 +6,7 @@ import '../App.css';
 // Константа для срока действия заказа в часах
 const ORDER_EXPIRY_HOURS = 3;
 
-const OrderForm = ({ onOrderCreated, selectedUserId, orderCreated }) => {
+const OrderForm = ({ onOrderCreated, selectedUserId, orderCreated, currentPrice, currentSymbol }) => {
     const { addNotification } = useNotification();
     const [userId, setUserId] = useState(selectedUserId || '1');
     const [amount, setAmount] = useState('');
