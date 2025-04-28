@@ -907,3 +907,39 @@
   margin-left: 15px;
   padding: 0 5px;
 }
+
+/* QR Code buttons */
+.qr-view-button,
+.text-view-button {
+  background-color: #f0f0f0;
+  border: 1px solid #ddd;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 12px;
+}
+
+.qr-view-button:hover,
+.text-view-button:hover {
+  background-color: #e0e0e0;
+}
+
+.qr-view-button {
+  background-color: #f8f9fa;
+  color: #0d6efd;
+}
+
+.text-view-button {
+  background-color: #f8f9fa;
+  color: #6c757d;
+}
+
+/* Стили для полного адреса в развернутом списке */
+.full-address {
+  max-width: 100% !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  word-break: break-all !important;
+}

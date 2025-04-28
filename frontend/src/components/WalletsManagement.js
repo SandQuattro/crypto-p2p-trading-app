@@ -1,6 +1,7 @@
 import React, {useEffect, useState} from 'react';
 import {getWalletBalances, getWalletDetails, getWalletDetailsExtended} from '../services/api';
 import {useNotification} from '../context/NotificationContext';
+import QRCodeWithLogo from './QRCodeWithLogo';
 import '../App.css';
 
 const WalletsManagement = ({ userId, lastPrice, symbol }) => {
@@ -12,6 +13,7 @@ const WalletsManagement = ({ userId, lastPrice, symbol }) => {
     const [balances, setBalances] = useState({});
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [estimatedValues, setEstimatedValues] = useState({});
+    const [qrVisibleFor, setQrVisibleFor] = useState({});
 
     // Обновляем рассчитанную стоимость при изменении последней цены
     useEffect(() => {
@@ -146,6 +148,13 @@ const WalletsManagement = ({ userId, lastPrice, symbol }) => {
         return balanceNum.toFixed(precision);
     };
 
+    const toggleQRCode = (walletId) => {
+        setQrVisibleFor(prev => ({
+            ...prev,
+            [walletId]: !prev[walletId]
+        }));
+    };
+
     return (
         <div className="wallets-management-container">
             <h2>Wallets Management</h2>
@@ -169,7 +178,6 @@ const WalletsManagement = ({ userId, lastPrice, symbol }) => {
                     <table className="wallets-table">
                         <thead>
                             <tr>
-                                <th style={{ width: '5%', minWidth: '40px' }}>ID</th>
                                 <th style={{ width: '10%', minWidth: '80px' }}>User</th>
                                 <th style={{ width: '25%', minWidth: '200px' }}>Wallet Address</th>
                                 <th style={{ width: '10%', minWidth: '100px', textAlign: 'left' }}>USDT Balance</th>
@@ -190,21 +198,48 @@ const WalletsManagement = ({ userId, lastPrice, symbol }) => {
 
                                 const estimatedValue = estimatedValues[wallet.address];
                                 const cryptoEstimate = estimatedValue && symbol ? estimatedValue[symbol.replace('RUB', '')] : null;
+                                const showQR = qrVisibleFor[wallet.id] || false;
 
                                 return (
                                     <tr key={wallet.id}>
-                                        <td>{wallet.id}</td>
                                         <td className="user-id-cell">{wallet.user_id || userId}</td>
                                         <td>
                                             <div className="wallet-address">
-                                                <span
-                                                    className="address-text"
-                                                    title={wallet.address}
-                                                    style={{ cursor: 'pointer' }}
-                                                    onClick={() => copyToClipboard(wallet.address)}
-                                                >
-                                                    {truncateAddress(wallet.address)}
-                                                </span>
+                                                {showQR ? (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                                        <QRCodeWithLogo
+                                                            value={wallet.address}
+                                                            size={140}
+                                                            logoSize={35}
+                                                            onClick={() => toggleQRCode(wallet.id)}
+                                                        />
+                                                        <button
+                                                            style={{ marginTop: '5px', fontSize: '12px' }}
+                                                            onClick={() => toggleQRCode(wallet.id)}
+                                                            className="text-view-button"
+                                                        >
+                                                            Текстовый вид
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                                        <span
+                                                            className="address-text"
+                                                            title={wallet.address}
+                                                            style={{ cursor: 'pointer' }}
+                                                            onClick={() => copyToClipboard(wallet.address)}
+                                                        >
+                                                            {truncateAddress(wallet.address)}
+                                                        </span>
+                                                        <button
+                                                            style={{ marginTop: '5px', fontSize: '12px' }}
+                                                            onClick={() => toggleQRCode(wallet.id)}
+                                                            className="qr-view-button"
+                                                        >
+                                                            QR-код
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                         </td>
                                         <td className="balance-cell">{isBalancesLoading ? '...' : formatBalance(walletBalance.token_balance_ether)}</td>

@@ -1,6 +1,7 @@
 import React, {useEffect, useState} from 'react';
 import {deleteOrder, getTransactionIdForWallet, getUserOrders, getWalletDetails} from '../services/api';
 import {useNotification} from '../context/NotificationContext';
+import QRCodeWithLogo from './QRCodeWithLogo';
 import '../App.css';
 
 const OrdersList = ({ userId, refreshTrigger }) => {
@@ -11,6 +12,7 @@ const OrdersList = ({ userId, refreshTrigger }) => {
     const [error, setError] = useState('');
     const [transactionIds, setTransactionIds] = useState({});
     const [expandedOrders, setExpandedOrders] = useState({});
+    const [qrVisibleFor, setQrVisibleFor] = useState({});
 
     useEffect(() => {
         const fetchData = async () => {
@@ -130,6 +132,13 @@ const OrdersList = ({ userId, refreshTrigger }) => {
         }));
     };
 
+    const toggleQRCode = (orderId) => {
+        setQrVisibleFor(prev => ({
+            ...prev,
+            [orderId]: !prev[orderId]
+        }));
+    };
+
     // Function to handle order deletion
     const handleDeleteOrder = async (orderId) => {
         if (!window.confirm("Are you sure you want to delete this pending order?")) {
@@ -169,7 +178,6 @@ const OrdersList = ({ userId, refreshTrigger }) => {
                     <table className="orders-table">
                         <thead>
                             <tr>
-                                <th style={{ width: '5%', minWidth: '40px' }}>ID</th>
                                 <th style={{ width: '10%', minWidth: '80px' }}>Amount<br />(USDT)</th>
                                 <th style={{ width: '15%', minWidth: '100px' }}>Wallet Address</th>
                                 <th style={{ width: '10%', minWidth: '100px', textAlign: 'center' }}>Status</th>
@@ -192,6 +200,7 @@ const OrdersList = ({ userId, refreshTrigger }) => {
                                 const transactionId = order.status === 'completed' ? transactionIds[order.id] : null;
                                 const isPending = order.status === 'pending';
                                 const isExpanded = expandedOrders[order.id];
+                                const showQR = qrVisibleFor[order.id] || false;
 
                                 return (
                                     <React.Fragment key={order.id}>
@@ -200,7 +209,6 @@ const OrdersList = ({ userId, refreshTrigger }) => {
                                             onClick={isPending ? () => toggleOrderExpand(order.id) : undefined}
                                             style={isPending ? { cursor: 'pointer' } : {}}
                                         >
-                                            <td>{order.id}</td>
                                             <td>{order.amount}</td>
                                             <td>
                                                 <div className="wallet-address">
@@ -257,19 +265,69 @@ const OrdersList = ({ userId, refreshTrigger }) => {
 
                                         {isPending && isExpanded && (
                                             <tr className="payment-details-row">
-                                                <td colSpan="7">
+                                                <td colSpan="6">
                                                     <div className="payment-info-container">
                                                         <div className="wallet-address-container">
                                                             <span className="wallet-address-label">Payment address:</span>
                                                             <div className="wallet-address">
-                                                                <span
-                                                                    className="address-text"
-                                                                    title="Click to copy address"
-                                                                    onClick={() => copyToClipboard(walletAddress)}
-                                                                    style={{ cursor: 'pointer' }}
-                                                                >
-                                                                    {walletAddress}
-                                                                </span>
+                                                                {showQR ? (
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '10px 0' }}>
+                                                                        <QRCodeWithLogo
+                                                                            value={walletAddress}
+                                                                            size={200}
+                                                                            logoSize={50}
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                toggleQRCode(order.id);
+                                                                            }}
+                                                                        />
+                                                                        <button
+                                                                            style={{ marginTop: '10px' }}
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                toggleQRCode(order.id);
+                                                                            }}
+                                                                            className="text-view-button"
+                                                                        >
+                                                                            Показать текстом
+                                                                        </button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                                                        <span
+                                                                            className="address-text full-address"
+                                                                            title="Click to copy address"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                copyToClipboard(walletAddress);
+                                                                            }}
+                                                                            style={{
+                                                                                cursor: 'pointer',
+                                                                                maxWidth: '100%',
+                                                                                wordBreak: 'break-all',
+                                                                                whiteSpace: 'normal',
+                                                                                fontSize: '0.9rem',
+                                                                                fontFamily: 'monospace',
+                                                                                padding: '10px',
+                                                                                backgroundColor: 'rgba(0,0,0,0.1)',
+                                                                                borderRadius: '4px',
+                                                                                display: 'inline-block'
+                                                                            }}
+                                                                        >
+                                                                            {walletAddress}
+                                                                        </span>
+                                                                        <button
+                                                                            style={{ marginTop: '10px' }}
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                toggleQRCode(order.id);
+                                                                            }}
+                                                                            className="qr-view-button"
+                                                                        >
+                                                                            Показать QR-код
+                                                                        </button>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </div>
 
