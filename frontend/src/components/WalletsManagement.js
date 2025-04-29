@@ -182,7 +182,6 @@ const WalletsManagement = ({ userId, lastPrice, symbol }) => {
                                 <th style={{ width: '25%', minWidth: '200px' }}>Wallet Address</th>
                                 <th style={{ width: '10%', minWidth: '100px', textAlign: 'left' }}>USDT Balance</th>
                                 <th style={{ width: '15%', minWidth: '120px', textAlign: 'left', paddingRight: '25px' }}>BNB Balance</th>
-                                {symbol && <th style={{ width: '10%', minWidth: '100px', textAlign: 'left' }}>{symbol.replace('RUB', '')} Estimate</th>}
                                 <th style={{ width: '8%', minWidth: '60px' }}>Testnet</th>
                                 <th style={{ width: '15%', minWidth: '140px' }}>Created Date</th>
                                 <th style={{ width: '10%', minWidth: '100px' }}>Actions</th>
@@ -244,15 +243,6 @@ const WalletsManagement = ({ userId, lastPrice, symbol }) => {
                                         </td>
                                         <td className="balance-cell">{isBalancesLoading ? '...' : formatBalance(walletBalance.token_balance_ether)}</td>
                                         <td className="balance-cell">{isBalancesLoading ? '...' : formatBalance(walletBalance.bnb_balance_ether, 18)}</td>
-                                        {symbol && (
-                                            <td className="balance-cell">{
-                                                isBalancesLoading
-                                                    ? '...'
-                                                    : (cryptoEstimate
-                                                        ? formatBalance(cryptoEstimate.toString(), 8)
-                                                        : '0.00000000')
-                                            }</td>
-                                        )}
                                         <td>{wallet.is_testnet ? 'Yes' : 'No'}</td>
                                         <td>{wallet.created_at ? formatDate(wallet.created_at) : 'N/A'}</td>
                                         <td>
