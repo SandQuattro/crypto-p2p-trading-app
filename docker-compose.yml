@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8080:8000"
+      - "9000:8000"
     # restart: unless-stopped
     container_name: crypto-p2p-trading-app
     environment:
