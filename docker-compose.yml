@@ -24,6 +24,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    networks:
+      - crypto-trading-network
 
   postgres:
     image: postgres:15-alpine
@@ -42,6 +44,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+      - crypto-trading-network
 
   pgadmin:
     image: dpage/pgadmin4
@@ -53,6 +57,13 @@ services:
       - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD}
     depends_on:
       - postgres
+    networks:
+      - crypto-trading-network
 
 volumes:
   postgres_data:
+
+networks:
+  crypto-trading-network:
+    driver: bridge
+    name: crypto-trading-network
