@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	cfg "github.com/sand/crypto-p2p-trading-app/backend/config"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/mocked"
 	repository "github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/repository"
@@ -153,7 +152,7 @@ func main() {
 
 	// Create HTTP server with timeouts
 	server := &http.Server{
-		Addr:         ":" + config.HTTP.Port,
+		Addr:         "0.0.0.0:" + config.HTTP.Port,
 		Handler:      handler,
 		ReadTimeout:  readTimeoutSeconds * time.Second,
 		WriteTimeout: writeTimeoutSeconds * time.Second,
