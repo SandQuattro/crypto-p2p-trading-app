@@ -14,7 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sand/crypto-p2p-trading-app/backend/config"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/core/ports"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -60,6 +60,13 @@ const (
 	TxStatusFailed    = "failed"
 )
 
+// Block fetching retry configuration
+const (
+	maxBlockFetchRetries = 5                // Maximum number of retries for block fetching
+	initialRetryDelay    = 1 * time.Second  // Initial delay before retry
+	maxRetryDelay        = 10 * time.Second // Maximum delay between retries
+)
+
 // GetBSCWebSocketEndpoints BSC WebSocket endpoints
 func GetBSCWebSocketEndpoints() []string {
 	if shared.IsBlockchainDebugMode() {
@@ -91,57 +98,6 @@ var bscHTTPEndpoints = []string{
 	"https://bsc-dataseed4.binance.org/",
 }
 
-type TransactionService interface {
-	GetTransactionsByWallet(ctx context.Context, walletAddress string) ([]entities.Transaction, error)
-	RecordTransaction(ctx context.Context, txHash common.Hash, walletAddress string, amount *big.Int, blockNumber int64) error
-	ConfirmTransaction(ctx context.Context, txHash string) error
-	ProcessPendingTransactions(ctx context.Context) error
-	MarkTransactionAMLFlagged(ctx context.Context, txHash string) error
-	MarkTransactionAMLCleared(ctx context.Context, txHash string) error
-}
-
-// AMLService определяет интерфейс для AML проверок
-type AMLService interface {
-	CheckTransaction(ctx context.Context, txHash common.Hash, sourceAddress, destinationAddress string, amount *big.Int) (*entities.AMLCheckResult, error)
-}
-
-// WalletService defines the interface for wallet operations.
-type WalletService interface {
-	IsOurWallet(ctx context.Context, address string) (bool, error)
-	GenerateWalletForUser(ctx context.Context, userID int64) (int, string, error)
-	GetAllTrackedWalletsForUser(ctx context.Context, userID int64) ([]string, error)
-	GetWalletDetailsForUser(ctx context.Context, userID int64) ([]entities.WalletDetail, error)
-	GetERC20TokenBalance(ctx context.Context, client *ethclient.Client, walletAddress string) (*big.Int, error)
-	GetGasPrice(ctx context.Context, client *ethclient.Client) (*big.Int, error)
-	TransferFunds(ctx context.Context, client *ethclient.Client, fromWalletID int, toAddress string, amount *big.Int) (string, error)
-	TransferAllBNB(ctx context.Context, toAddress, depositUserWalletAddress string, userID, index int) (string, error)
-	GetOrderIdForWallet(ctx context.Context, walletAddress string) (int, error)
-
-	// Методы мониторинга балансов
-	GetWalletBalances(ctx context.Context) (map[string]*entities.WalletBalance, error)
-	GetUserWalletsBalances(ctx context.Context, userID int) (map[string]*entities.WalletBalance, error)
-	GetWalletBalance(ctx context.Context, address string) (*entities.WalletBalance, error)
-}
-
-// OrderService defines the interface for order operations.
-type OrderService interface {
-	MarkOrderForAMLReview(ctx context.Context, orderID int, notes string) error
-	MarkOrderAMLCleared(ctx context.Context, orderID int, notes string) error
-	RemoveOldOrders(ctx context.Context, olderThan time.Duration) (int64, error)
-	GetUserOrders(ctx context.Context, userID int) ([]entities.Order, error)
-	CreateOrder(ctx context.Context, userID, walletID int, amount string) error
-}
-
-const (
-	subscriptionRetryDelay = 10 * time.Second // Delay before retrying subscription
-	maxConcurrentChecks    = 100              // Максимальное количество одновременных проверок подтверждений
-
-	// Block fetching retry configuration
-	maxBlockFetchRetries = 5                // Maximum number of retries for block fetching
-	initialRetryDelay    = 1 * time.Second  // Initial delay before retry
-	maxRetryDelay        = 10 * time.Second // Maximum delay between retries
-)
-
 // GetContractAddress returns the appropriate contract address based on mode
 func GetContractAddress() string {
 	if shared.IsBlockchainDebugMode() {
@@ -163,10 +119,10 @@ type BinanceSmartChain struct {
 	logger *slog.Logger
 	config *config.Config
 
-	transactions TransactionService
-	wallets      WalletService
-	amlService   AMLService   // Добавляем сервис AML проверок
-	orders       OrderService // Добавляем сервис ордеров
+	transactions ports.TransactionService
+	wallets      ports.WalletService
+	amlService   ports.AMLService
+	orders       ports.OrderService
 
 	// Семафор для ограничения одновременных проверок подтверждений
 	confirmationSemaphore chan struct{}
@@ -179,10 +135,10 @@ type BinanceSmartChain struct {
 func NewBinanceSmartChain(
 	logger *slog.Logger,
 	config *config.Config,
-	transactions TransactionService,
-	wallets WalletService,
-	amlService AMLService,
-	orders OrderService,
+	transactions ports.TransactionService,
+	wallets ports.WalletService,
+	amlService ports.AMLService,
+	orders ports.OrderService,
 ) *BinanceSmartChain {
 	// Refresh the USDTContractAddress to ensure it's set correctly based on current environment
 	USDTContractAddress = GetContractAddress()
@@ -202,7 +158,7 @@ func NewBinanceSmartChain(
 		wallets:               wallets,
 		amlService:            amlService,
 		orders:                orders,
-		confirmationSemaphore: make(chan struct{}, maxConcurrentChecks),
+		confirmationSemaphore: make(chan struct{}, ports.MaxConcurrentChecks),
 	}
 }
 
@@ -215,12 +171,12 @@ func (bsc *BinanceSmartChain) SubscribeToTransactions(ctx context.Context, rpcUR
 		// Пытаемся использовать WebSocket подписку
 		if err := bsc.subscribeViaWebsocket(ctx); err != nil {
 			bsc.logger.ErrorContext(ctx, "WebSocket subscription failed, retrying...",
-				"delay", subscriptionRetryDelay, "error", err)
+				"delay", ports.BlockchainSubscriptionRetryDelay, "error", err)
 
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(subscriptionRetryDelay):
+			case <-time.After(ports.BlockchainSubscriptionRetryDelay):
 				continue
 			}
 		}
