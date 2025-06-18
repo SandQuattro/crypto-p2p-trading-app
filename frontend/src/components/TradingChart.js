@@ -28,51 +28,18 @@ const TradingChart = ({ symbol, candleData, lastCandle }) => {
         horzLines: { color: '#2B2B43' },
       },
       timeScale: {
-        borderColor: '#71649C',
-        borderVisible: true,
-        visible: true,
+        borderColor: '#2B2B43',
         timeVisible: true,
         secondsVisible: false,
-        ticksVisible: true,
-        barSpacing: 8,
-        minBarSpacing: 0.5,
-        rightOffset: 12,
-        fixLeftEdge: true,
-        fixRightEdge: false,
-        lockVisibleTimeRangeOnResize: false,
-        rightBarStaysOnScroll: true,
         tickMarkFormatter: (time) => {
           const date = new Date(time * 1000);
           const hours = date.getHours().toString().padStart(2, '0');
           const minutes = date.getMinutes().toString().padStart(2, '0');
-
-          // Показываем часы и минуты для лучшей читаемости
-          if (minutes === '00') {
-            return `${hours}:00`;
-          } else if (minutes === '30') {
-            return `${hours}:30`;
-          } else if (parseInt(minutes) % 15 === 0) {
-            return `${hours}:${minutes}`;
-          }
-          return `${hours}:${minutes}`;
+          return minutes === '00' ? `${hours}:00` : `${hours}:${minutes}`;
         },
       },
       crosshair: {
         mode: 0,
-        vertLine: {
-          width: 1,
-          color: '#758696',
-          style: 2,
-          visible: true,
-          labelVisible: true,
-        },
-        horzLine: {
-          width: 1,
-          color: '#758696',
-          style: 2,
-          visible: true,
-          labelVisible: true,
-        },
       },
     });
 
@@ -127,13 +94,19 @@ const TradingChart = ({ symbol, candleData, lastCandle }) => {
         to: lastTime,
       });
 
-      // Дополнительно настраиваем временную шкалу для лучшего отображения
-      chartRef.current.timeScale().applyOptions({
-        borderColor: '#71649C',
-        borderVisible: true,
-        ticksVisible: true,
-        timeVisible: true,
-        secondsVisible: false,
+      // Принудительное обновление графика
+      chartRef.current.applyOptions({
+        timeScale: {
+          rightOffset: 10,
+          barSpacing: 6,
+          fixLeftEdge: true,
+          lockVisibleTimeRangeOnResize: true,
+          rightBarStaysOnScroll: true,
+          borderVisible: false,
+          visible: true,
+          timeVisible: true,
+          secondsVisible: false
+        }
       });
     }
   }, [candleData, symbol]);
