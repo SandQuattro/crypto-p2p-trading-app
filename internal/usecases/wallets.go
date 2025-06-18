@@ -28,8 +28,8 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/repository"
-	"github.com/tyler-smith/go-bip32"
-	"github.com/tyler-smith/go-bip39"
+	"github.com/sandquattro/go-bip32"
+	"github.com/sandquattro/go-bip39"
 )
 
 // Blockchain network configuration
