@@ -20,7 +20,7 @@ services:
       - BLOCKCHAIN_DEBUG_MODE=${BLOCKCHAIN_DEBUG_MODE:-false}   # Use value from .env, default to false if not set
       - REACT_APP_API_URL=${REACT_APP_API_URL}
     depends_on:
-      crypto-exchange-postgres:
+      crypto-p2p-postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "http://localhost:8000/api/pairs"]
@@ -31,17 +31,17 @@ services:
     networks:
       - dokploy-network
 
-  crypto-exchange-postgres:
+  crypto-p2p-postgres:
     image: postgres:15-alpine
-    container_name: crypto-exchange-postgres
+    container_name: crypto-p2p-postgres
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
     volumes:
-      - crypto-exchange-postgres_data:/var/lib/postgresql/data # ./pg_volume/volumes/postgres:/var/lib/postgresql/data # link container folder to host machine folder
+      - crypto-p2p-postgres_data:/var/lib/postgresql/data # ./pg_volume/volumes/postgres:/var/lib/postgresql/data # link container folder to host machine folder
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -60,9 +60,9 @@ services:
       - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL}
       - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD}
     depends_on:
-      - crypto-exchange-postgres
+      - crypto-p2p-postgres
     networks:
       - dokploy-network
 
 volumes:
-  crypto-exchange-postgres_data:
+  crypto-p2p-postgres_data:
