@@ -33,8 +33,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o crypto-trading-server ./cmd/trading
 
 # Stage 3: Final image
 FROM alpine:3.18
+
 WORKDIR /app
-RUN apk --no-cache add ca-certificates
+
+RUN apk --no-cache add ca-certificates curl
 
 # Copy the compiled backend
 COPY --from=backend-builder /app/crypto-trading-server /app/
