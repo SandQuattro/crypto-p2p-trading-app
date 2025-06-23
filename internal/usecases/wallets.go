@@ -5,7 +5,6 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"math/big"
 	"strings"
@@ -879,7 +878,8 @@ func CreateMasterKey(seed string) *bip32.Key {
 	seedBytes := bip39.NewSeed(seed, "")
 	masterKey, err := bip32.NewMasterKey(seedBytes)
 	if err != nil {
-		log.Fatal("Failed to create master key")
+		slog.Default().Error("Failed to create master key")
+		panic("Failed to create master key")
 	}
 
 	return masterKey

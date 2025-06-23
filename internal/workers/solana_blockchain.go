@@ -8,6 +8,7 @@ import (
 	"time"
 
 	bin "github.com/gagliardetto/binary"
+	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/gagliardetto/solana-go/rpc/ws"
 	"github.com/sand/crypto-p2p-trading-app/backend/config"
@@ -280,7 +281,7 @@ func (s *SolanaBlockchain) processSlot(ctx context.Context, rpcClient *rpc.Clien
 
 	block, err := rpcClient.GetBlockWithOpts(ctx, slotNumber, &rpc.GetBlockOpts{
 		Encoding:                       solana.EncodingBase64, // Используем Base64, будем декодировать вручную
-		MaxSupportedTransactionVersion: pointy.Uint8(0),
+		MaxSupportedTransactionVersion: pointy.Uint64(0),
 		TransactionDetails:             rpc.TransactionDetailsFull,
 		Commitment:                     rpc.CommitmentConfirmed,
 		Rewards:                        pointy.Bool(false),
@@ -315,10 +316,10 @@ func (s *SolanaBlockchain) processSlot(ctx context.Context, rpcClient *rpc.Clien
 		}
 
 		// Получаем бинарные данные транзакции, так как запросили EncodingBase64
-		binaryTxData, err := txWithMeta.Transaction.GetBinary()
-		if err != nil {
+		binaryTxData := txWithMeta.Transaction.GetBinary()
+		if binaryTxData == nil {
 			s.logger.WarnContext(ctx, "Failed to get binary transaction data in slot",
-				"slot_number", slotNumber, "error", err)
+				"slot_number", slotNumber)
 			continue
 		}
 

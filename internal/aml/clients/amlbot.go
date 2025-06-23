@@ -3,12 +3,13 @@ package clients
 import (
 	"context"
 	"fmt"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 )
 
 // AMLBotService представляет сервис для проверки транзакций через AMLBot API

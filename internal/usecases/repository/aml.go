@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 	"log/slog"
 	"time"
+
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 
 	tx "github.com/Thiht/transactor/pgx"
 	"github.com/jackc/pgx/v5"

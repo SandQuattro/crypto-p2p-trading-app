@@ -10,8 +10,8 @@ import (
 	"strconv"
 
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/workers"
 
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/core/ports"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/mocked"
 
 	"github.com/gorilla/mux"
@@ -19,19 +19,19 @@ import (
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases"
 )
 
-var _ OrderService = (*usecases.OrderService)(nil)
+var _ ports.OrderService = (*usecases.OrderService)(nil)
 
 type HTTPHandler struct {
 	logger             *slog.Logger
 	dataService        *mocked.DataService
-	walletService      workers.WalletService
-	orderService       OrderService
-	transactionService workers.TransactionService
+	walletService      ports.WalletService
+	orderService       ports.OrderService
+	transactionService ports.TransactionService
 
 	bscClient *ethclient.Client
 }
 
-func NewHTTPHandler(logger *slog.Logger, bscClient *ethclient.Client, dataService *mocked.DataService, walletService workers.WalletService, orderService OrderService, transactionService workers.TransactionService) *HTTPHandler {
+func NewHTTPHandler(logger *slog.Logger, bscClient *ethclient.Client, dataService *mocked.DataService, walletService ports.WalletService, orderService ports.OrderService, transactionService ports.TransactionService) *HTTPHandler {
 	return &HTTPHandler{
 		logger:             logger,
 		dataService:        dataService,
@@ -81,6 +81,11 @@ func (h *HTTPHandler) GetUserOrders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID, err := strconv.Atoi(userIDParam)
+	if err != nil {
+		h.logger.Error("Invalid user ID format", "error", err, "user_id", userIDParam)
+		http.Error(w, "Invalid user ID format", http.StatusBadRequest)
+		return
+	}
 
 	orders, err := h.orderService.GetUserOrders(r.Context(), userID)
 	if err != nil {
@@ -101,6 +106,11 @@ func (h *HTTPHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID, err := strconv.ParseInt(userIDParam, 10, 64)
+	if err != nil {
+		h.logger.Error("Invalid user ID format", "error", err, "user_id", userIDParam)
+		http.Error(w, "Invalid user ID format", http.StatusBadRequest)
+		return
+	}
 
 	// Here we always generate new deposit wallet for order
 	walletID, address, err := h.walletService.GenerateWalletForUser(r.Context(), userID)

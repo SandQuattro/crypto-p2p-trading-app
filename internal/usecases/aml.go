@@ -3,12 +3,13 @@ package usecases
 import (
 	"context"
 	"fmt"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
-	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/repository"
 	"log/slog"
 	"math/big"
 	"sync"
 	"time"
+
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/repository"
 
 	tx "github.com/Thiht/transactor/pgx"
 	"github.com/ethereum/go-ethereum/common"

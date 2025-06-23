@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/jackc/pgx/v5"
 	"log"
 	"log/slog"
 	"net/http"
@@ -13,7 +12,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	cfg "github.com/sand/crypto-p2p-trading-app/backend/config"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/core/ports"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/mocked"
 	repository "github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/repository"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/workers"
@@ -243,7 +245,7 @@ func initAndRunWorkers(
 	orderService *usecases.OrderService,
 	transactionService *usecases.TransactionServiceImpl,
 	walletService *usecases.WalletService,
-	amlService workers.AMLService,
+	amlService ports.AMLService,
 ) {
 	// Initialize blockchain processor с реальным AML сервисом
 	bscBlockchainProcessor := workers.NewBinanceSmartChain(logger, config, transactionService, walletService, amlService, orderService)
