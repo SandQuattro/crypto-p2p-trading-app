@@ -2,6 +2,7 @@ package workers
 
 import (
 	"context"
+	"github.com/sand/crypto-p2p-trading-app/backend/internal/handlers"
 	"log/slog"
 	"time"
 )
@@ -9,7 +10,7 @@ import (
 // OrderCleaner worker automatically removes old pending orders
 type OrderCleaner struct {
 	logger       *slog.Logger
-	orderService OrderService
+	orderService handlers.OrderService
 
 	// Duration after which orders are considered old and should be removed
 	expirationDuration time.Duration
@@ -21,7 +22,7 @@ type OrderCleaner struct {
 // NewOrderCleaner creates a new order cleaner worker
 func NewOrderCleaner(
 	logger *slog.Logger,
-	orderService OrderService,
+	orderService handlers.OrderService,
 	expirationDuration time.Duration,
 	cleanupInterval time.Duration,
 ) *OrderCleaner {

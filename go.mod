@@ -18,6 +18,7 @@ require (
 	github.com/sandquattro/go-bip32 v0.0.4
 	github.com/sandquattro/go-bip39 v0.0.3
 	github.com/stretchr/testify v1.10.0
+	go.openly.dev/pointy v1.3.0
 	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
 )
 
@@ -79,7 +80,7 @@ require (
 	golang.org/x/crypto v0.39.0 // indirect
 	golang.org/x/sync v0.15.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/term v0.30.0 // indirect
+	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 	golang.org/x/time v0.9.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
