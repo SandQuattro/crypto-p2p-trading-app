@@ -181,3 +181,18 @@ func (r *WalletsRepository) GetAllTrackedWalletsForUser(ctx context.Context, use
 
 	return wallets, nil
 }
+
+// DeleteWallet removes a wallet from the tracking system
+func (r *WalletsRepository) DeleteWallet(ctx context.Context, id int) error {
+	result, err := r.db(ctx).Exec(ctx, "DELETE FROM wallets WHERE id = $1", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete wallet: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("wallet with id %d not found", id)
+	}
+
+	r.logger.InfoContext(ctx, "Wallet deleted from tracking", "wallet_id", id)
+	return nil
+}

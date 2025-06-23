@@ -116,6 +116,7 @@ type WalletService interface {
 	TransferFunds(ctx context.Context, client *ethclient.Client, fromWalletID int, toAddress string, amount *big.Int) (string, error)
 	TransferAllBNB(ctx context.Context, toAddress, depositUserWalletAddress string, userID, index int) (string, error)
 	GetOrderIdForWallet(ctx context.Context, walletAddress string) (int, error)
+	DeleteWallet(ctx context.Context, walletID int) error
 
 	// Методы мониторинга балансов
 	GetWalletBalances(ctx context.Context) (map[string]*entities.WalletBalance, error)

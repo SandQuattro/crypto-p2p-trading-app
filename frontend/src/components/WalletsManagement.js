@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {getWalletBalances, getWalletDetails, getWalletDetailsExtended} from '../services/api';
+import {deleteWallet, getWalletBalances, getWalletDetails, getWalletDetailsExtended} from '../services/api';
 import {useNotification} from '../context/NotificationContext';
 import QRCodeWithLogo from './QRCodeWithLogo';
 import '../App.css';
@@ -155,6 +155,38 @@ const WalletsManagement = ({ userId, lastPrice, symbol }) => {
         }));
     };
 
+    const handleDeleteWallet = async (walletId, walletAddress) => {
+        // Проверяем баланс кошелька перед удалением
+        const walletBalance = balances[walletAddress];
+        const hasBalance = walletBalance &&
+            (parseFloat(walletBalance.token_balance_ether) > 0 || parseFloat(walletBalance.bnb_balance_ether) > 0);
+
+        if (hasBalance) {
+            addNotification(
+                `❌ НЕЛЬЗЯ удалить кошелек с балансом! USDT: ${walletBalance.token_balance_ether}, BNB: ${walletBalance.bnb_balance_ether}. Сначала переведите все средства!`,
+                'error'
+            );
+            return;
+        }
+
+        if (!window.confirm(`🚨 КРИТИЧЕСКОЕ ПРЕДУПРЕЖДЕНИЕ! 🚨\n\nВы уверены, что хотите НАВСЕГДА удалить кошелек:\n${walletAddress}\n\n⚠️ ПОСЛЕ УДАЛЕНИЯ ВОССТАНОВИТЬ КОШЕЛЕК БУДЕТ НЕВОЗМОЖНО!\n⚠️ УБЕДИТЕСЬ, что баланс = 0.00 и нет активных заказов!\n\nПродолжить удаление?`)) {
+            return;
+        }
+
+        try {
+            setLoading(true);
+            await deleteWallet(walletId);
+            addNotification('✅ Кошелек успешно удален!', 'success');
+            // Обновляем список кошельков
+            setRefreshTrigger(prev => prev + 1);
+        } catch (error) {
+            console.error('Error deleting wallet:', error);
+            addNotification(`❌ Ошибка при удалении кошелька: ${error.message}`, 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="wallets-management-container">
             <h2>Wallets Management</h2>
@@ -246,14 +278,44 @@ const WalletsManagement = ({ userId, lastPrice, symbol }) => {
                                         <td>{wallet.is_testnet ? 'Yes' : 'No'}</td>
                                         <td>{wallet.created_at ? formatDate(wallet.created_at) : 'N/A'}</td>
                                         <td>
-                                            <button
-                                                className="refresh-balance-button"
-                                                onClick={() => handleRefreshBalance(wallet.address)}
-                                                title="Update balance"
-                                                disabled={isBalancesLoading}
-                                            >
-                                                {isBalancesLoading ? '...' : '🔄'}
-                                            </button>
+                                            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
+                                                <button
+                                                    className="refresh-balance-button"
+                                                    onClick={() => handleRefreshBalance(wallet.address)}
+                                                    title="Update balance"
+                                                    disabled={isBalancesLoading}
+                                                >
+                                                    {isBalancesLoading ? '...' : '🔄'}
+                                                </button>
+                                                {(() => {
+                                                    const hasBalance = walletBalance &&
+                                                        (parseFloat(walletBalance.token_balance_ether) > 0 || parseFloat(walletBalance.bnb_balance_ether) > 0);
+                                                    const isDisabled = loading || isBalancesLoading || hasBalance;
+
+                                                    return (
+                                                        <button
+                                                            className="delete-wallet-button"
+                                                            onClick={() => handleDeleteWallet(wallet.id, wallet.address)}
+                                                            title={hasBalance ?
+                                                                "❌ Нельзя удалить кошелек с балансом! Сначала переведите все средства!" :
+                                                                "🗑️ Удалить кошелек (только с нулевым балансом)"}
+                                                            disabled={isDisabled}
+                                                            style={{
+                                                                backgroundColor: hasBalance ? '#6c757d' : '#dc3545',
+                                                                color: 'white',
+                                                                border: 'none',
+                                                                borderRadius: '4px',
+                                                                padding: '5px 8px',
+                                                                cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                                                fontSize: '12px',
+                                                                opacity: hasBalance ? 0.5 : 1
+                                                            }}
+                                                        >
+                                                            {hasBalance ? '🔒' : '🗑️'}
+                                                        </button>
+                                                    );
+                                                })()}
+                                            </div>
                                         </td>
                                     </tr>
                                 );

@@ -154,3 +154,22 @@ export const deleteOrder = async (orderId) => {
     throw error; // Rethrow for general handling
   }
 };
+
+// Delete a wallet
+export const deleteWallet = async (walletId) => {
+  try {
+    const response = await axios.delete(`${BASE_URL}/wallet/${walletId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error deleting wallet ${walletId}:`, error);
+    // Re-throw with a more specific message based on status code
+    if (error.response && error.response.status === 404) {
+      throw new Error('Wallet not found or already deleted.');
+    } else if (error.response && error.response.status === 400) {
+      throw new Error(error.response.data || 'Cannot delete wallet with non-zero balance or associated orders.');
+    } else if (error.response && error.response.status === 403) {
+      throw new Error('You do not have permission to delete this wallet.');
+    }
+    throw error;
+  }
+};
