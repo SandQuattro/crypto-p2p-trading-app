@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/jackc/pgx/v5"
 	"log"
 	"log/slog"
 	"net/http"
@@ -152,7 +153,7 @@ func main() {
 
 	// Create HTTP server with timeouts
 	server := &http.Server{
-		Addr:         "0.0.0.0:" + config.HTTP.Port,
+		Addr:         ":" + config.HTTP.Port,
 		Handler:      handler,
 		ReadTimeout:  readTimeoutSeconds * time.Second,
 		WriteTimeout: writeTimeoutSeconds * time.Second,
@@ -161,7 +162,7 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		logger.Info("Starting server", "port", config.HTTP.Port)
+		logger.Info("Starting server", "address", server.Addr)
 		if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("Server error", "error", err)
 			log.Fatal(err)

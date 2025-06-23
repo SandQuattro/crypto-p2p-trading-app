@@ -28,8 +28,8 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/entities"
 	"github.com/sand/crypto-p2p-trading-app/backend/internal/usecases/repository"
-	"github.com/tyler-smith/go-bip32"
-	"github.com/tyler-smith/go-bip39"
+	"github.com/sandquattro/go-bip32"
+	"github.com/sandquattro/go-bip39"
 )
 
 // Blockchain network configuration
@@ -100,6 +100,7 @@ type WalletsRepository interface {
 	GetLastWalletIndexForUser(ctx context.Context, userID int64) (uint32, error)
 	TrackWalletWithUserAndIndex(ctx context.Context, address string, derivationPath string, userID int64, index uint32, isTestNet bool) (int, error)
 	GetAllTrackedWalletsForUser(ctx context.Context, userID int64) ([]entities.Wallet, error)
+	DeleteWallet(ctx context.Context, id int) error
 }
 
 var _ WalletsRepository = (*repository.WalletsRepository)(nil)
@@ -1560,4 +1561,77 @@ func (bsc *WalletService) GetOrderIdForWallet(ctx context.Context, walletAddress
 		return 0, errors.New("order service not initialized")
 	}
 	return bsc.orderService.GetOrderIdForWallet(ctx, walletAddress)
+}
+
+// DeleteWallet deletes a wallet by ID if it meets deletion criteria
+func (bsc *WalletService) DeleteWallet(ctx context.Context, walletID int) error {
+	bsc.logger.Info("Attempting to delete wallet", "wallet_id", walletID)
+
+	// Find the wallet by ID to check if it exists and get its details
+	wallet, err := bsc.repo.FindWalletByID(ctx, walletID)
+	if err != nil {
+		bsc.logger.Error("Failed to find wallet", "wallet_id", walletID, "error", err)
+		return fmt.Errorf("wallet %d not found", walletID)
+	}
+
+	// Check if wallet has any balance (both BNB and tokens)
+	client, err := GetBSCClient(ctx, bsc.logger)
+	if err != nil {
+		bsc.logger.Error("Failed to connect to BSC client", "error", err)
+		return fmt.Errorf("failed to connect to blockchain client")
+	}
+	defer client.Close()
+
+	// Check BNB balance
+	bnbBalance, err := bsc.CheckBalance(ctx, client, wallet.Address)
+	if err != nil {
+		bsc.logger.Error("Failed to check BNB balance", "wallet_address", wallet.Address, "error", err)
+		return fmt.Errorf("failed to check wallet balance")
+	}
+
+	// Check token balance
+	tokenBalance, err := bsc.GetERC20TokenBalance(ctx, client, wallet.Address)
+	if err != nil {
+		bsc.logger.Error("Failed to check token balance", "wallet_address", wallet.Address, "error", err)
+		return fmt.Errorf("failed to check wallet token balance")
+	}
+
+	// Don't allow deletion if wallet has any balance
+	if bnbBalance.Cmp(big.NewInt(0)) > 0 || tokenBalance.Cmp(big.NewInt(0)) > 0 {
+		bsc.logger.Warn("Cannot delete wallet with non-zero balance",
+			"wallet_id", walletID,
+			"wallet_address", wallet.Address,
+			"bnb_balance", bnbBalance.String(),
+			"token_balance", tokenBalance.String())
+		return fmt.Errorf("cannot delete wallet with non-zero balance")
+	}
+
+	// Check if wallet has any associated orders
+	orderID, err := bsc.GetOrderIdForWallet(ctx, wallet.Address)
+	if err == nil && orderID > 0 {
+		bsc.logger.Warn("Cannot delete wallet with associated orders",
+			"wallet_id", walletID,
+			"wallet_address", wallet.Address,
+			"order_id", orderID)
+		return fmt.Errorf("cannot delete wallet with associated orders")
+	}
+
+	// Remove from in-memory cache
+	bsc.walletsMu.Lock()
+	delete(bsc.wallets, wallet.Address)
+	bsc.walletsMu.Unlock()
+
+	// Delete from database using repository
+	err = bsc.repo.DeleteWallet(ctx, walletID)
+	if err != nil {
+		bsc.logger.Error("Failed to delete wallet from database", "wallet_id", walletID, "error", err)
+		// Restore in cache if database deletion failed
+		bsc.walletsMu.Lock()
+		bsc.wallets[wallet.Address] = true
+		bsc.walletsMu.Unlock()
+		return fmt.Errorf("failed to delete wallet from database")
+	}
+
+	bsc.logger.Info("Wallet deleted successfully", "wallet_id", walletID, "wallet_address", wallet.Address)
+	return nil
 }

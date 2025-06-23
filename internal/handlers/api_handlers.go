@@ -59,6 +59,7 @@ func (h *HTTPHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/wallet/details", h.GetWalletDetailsHandler).Methods("GET")
 	router.HandleFunc("/wallet/transfer", h.TransferFundsHandler).Methods("POST")
 	router.HandleFunc("/wallets/extended", h.GetWalletDetailsExtendedHandler).Methods("GET")
+	router.HandleFunc("/wallet/{walletId:[0-9]+}", h.DeleteWalletHandler).Methods("DELETE")
 
 	// Transactions
 	router.HandleFunc("/transactions/wallet", h.GetWalletTransactions).Methods("GET")
@@ -544,4 +545,43 @@ func (h *HTTPHandler) DeleteOrderHandler(w http.ResponseWriter, r *http.Request)
 	// Respond with success
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Order deleted successfully"})
+}
+
+// DeleteWalletHandler handles requests to delete a wallet.
+func (h *HTTPHandler) DeleteWalletHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	walletIDStr, ok := vars["walletId"]
+	if !ok {
+		h.logger.Error("Wallet ID not found in path parameters")
+		http.Error(w, "Wallet ID is required", http.StatusBadRequest)
+		return
+	}
+
+	walletID, err := strconv.Atoi(walletIDStr)
+	if err != nil {
+		h.logger.Error("Invalid wallet ID format", "error", err, "wallet_id", walletIDStr)
+		http.Error(w, "Invalid wallet ID format", http.StatusBadRequest)
+		return
+	}
+
+	// Call the service layer to delete the wallet
+	err = h.walletService.DeleteWallet(r.Context(), walletID)
+	if err != nil {
+		// Log the internal error
+		h.logger.Error("Failed to delete wallet", "error", err, "wallet_id", walletID)
+
+		// Provide appropriate HTTP response based on the error type
+		// This requires the repository/service to return specific error types
+		// For now, using a generic error message, but consider refining this
+		if err.Error() == fmt.Sprintf("wallet %d not found or not deletable", walletID) { // Example check, replace with actual error handling
+			http.Error(w, err.Error(), http.StatusNotFound) // Or StatusForbidden/StatusBadRequest depending on logic
+		} else {
+			http.Error(w, "Failed to delete wallet", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Respond with success
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Wallet deleted successfully"})
 }
